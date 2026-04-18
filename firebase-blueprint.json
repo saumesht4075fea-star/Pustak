@@ -1,0 +1,80 @@
+{
+  "entities": {
+    "ebook": {
+      "title": "Ebook",
+      "description": "An ebook available for purchase",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "description": "The title of the ebook" },
+        "author": { "type": "string", "description": "The author of the ebook" },
+        "description": { "type": "string", "description": "A description of the ebook" },
+        "price": { "type": "number", "description": "The price in INR" },
+        "coverUrl": { "type": "string", "description": "URL of the cover image" },
+        "fileUrl": { "type": "string", "description": "URL of the ebook file" },
+        "category": { "type": "string", "description": "The category of the ebook" },
+        "cosmofeedUrl": { "type": "string", "description": "Cosmofeed payment link" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "author", "price", "coverUrl", "fileUrl", "category"]
+    },
+    "user": {
+      "title": "User",
+      "description": "User profile information",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "customer"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email"]
+    },
+    "order": {
+      "title": "Order",
+      "description": "A purchase record",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "ebookId": { "type": "string" },
+        "amount": { "type": "number" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "ebookId", "amount", "status"]
+    },
+    "review": {
+      "title": "Review",
+      "description": "A user review for an ebook",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "ebookId": { "type": "string" },
+        "rating": { "type": "number" },
+        "comment": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "ebookId", "rating"]
+    },
+    "wishlist": {
+      "title": "Wishlist",
+      "description": "A user's wishlist item",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "ebookId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "ebookId"]
+    }
+  },
+  "firestore": {
+    "/ebooks/{ebookId}": { "schema": "ebook", "description": "Collection of ebooks" },
+    "/users/{userId}": { "schema": "user", "description": "Collection of user profiles" },
+    "/orders/{orderId}": { "schema": "order", "description": "Collection of orders" },
+    "/reviews/{reviewId}": { "schema": "review", "description": "Collection of ebook reviews" },
+    "/wishlist/{wishlistId}": { "schema": "wishlist", "description": "Collection of wishlist items" }
+  }
+}
