@@ -37,6 +37,9 @@ interface WithdrawalRequest {
   user_id: string;
   amount: number;
   upi_id: string;
+  mobile_number?: string;
+  email_id?: string;
+  purchase_utr?: string;
   status: 'pending' | 'success' | 'failed';
   created_at: string;
 }
@@ -51,71 +54,73 @@ export default function SellerDashboard({ user, isAdmin, isSeller }: { user: Use
   const [withdrawals, setWithdrawals] = useState<WithdrawalRequest[]>([]);
   const [isWithdrawOpen, setIsWithdrawOpen] = useState(false);
   const [upiId, setUpiId] = useState('');
+  const [mobileNumber, setMobileNumber] = useState('');
+  const [emailId, setEmailId] = useState('');
+  const [purchaseUtr, setPurchaseUtr] = useState('');
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [isSubmittingWithdraw, setIsSubmittingWithdraw] = useState(false);
   const [hasPurchasedAny, setHasPurchasedAny] = useState(false);
   const [clickCount, setClickCount] = useState(0);
 
+  const fetchData = async () => {
+    if (!user) return;
+    setLoading(true);
+    // Fetch Profile
+    const { data: profileData } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('uid', user.id)
+      .single();
+    if (profileData) setProfile(profileData as Profile);
+
+    // Fetch Affiliate Sales (Success & Pending) - Sales REFERRED by this user
+    const { data: affiliateData } = await supabase
+      .from('orders')
+      .select('*, ebook:ebooks(title, commission_amount, cover_url, seller_id), profiles(*)')
+      .eq('referrer_id', user.id)
+      .in('status', ['success', 'pending'])
+      .order('created_at', { ascending: false });
+    if (affiliateData) setAffiliateSales(affiliateData as any);
+
+    // Fetch Direct Sales - Sales of ebooks OWNED by this user
+    const { data: directData } = await supabase
+      .from('orders')
+      .select('*, ebook:ebooks!inner(*), profiles(*)')
+      .eq('ebook.seller_id', user.id)
+      .in('status', ['success', 'pending'])
+      .order('created_at', { ascending: false });
+    if (directData) setDirectSales(directData as any);
+
+    // Fetch user's own successful purchases to see codes
+    const { data: ownOrders } = await supabase
+      .from('orders')
+      .select('*, ebook:ebooks(*)').eq('user_id', user.id).eq('status', 'success');
+    
+    if (ownOrders) {
+      setOwnPurchases(ownOrders as any);
+      setHasPurchasedAny(ownOrders.length > 0);
+    }
+
+    // Fetch Withdrawals
+    const { data: withdrawalData } = await supabase
+      .from('withdrawals')
+      .select('*').eq('user_id', user.id).order('created_at', { ascending: false });
+    if (withdrawalData) setWithdrawals(withdrawalData as WithdrawalRequest[]);
+
+    // Fetch Clicks (Tracking)
+    const { count } = await supabase
+      .from('referral_tracking')
+      .select('*', { count: 'exact', head: true })
+      .eq('referrer_id', user.id);
+    setClickCount(count || 0);
+
+    setLoading(false);
+  };
+
   useEffect(() => {
     if (user) {
-      const fetchData = async () => {
-        setLoading(true);
-        // Fetch Profile
-        const { data: profileData } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('uid', user.id)
-          .single();
-        if (profileData) setProfile(profileData as Profile);
-
-        // Fetch Affiliate Sales (Success & Pending) - Sales REFERRED by this user
-        const { data: affiliateData } = await supabase
-          .from('orders')
-          .select('*, ebook:ebooks(title, commission_amount, cover_url, seller_id)')
-          .eq('referrer_id', user.id)
-          .in('status', ['success', 'pending'])
-          .order('created_at', { ascending: false });
-        if (affiliateData) setAffiliateSales(affiliateData as any);
-
-        // Fetch Direct Sales - Sales of ebooks OWNED by this user
-        const { data: directData } = await supabase
-          .from('orders')
-          .select('*, ebook:ebooks!inner(*)')
-          .eq('ebook.seller_id', user.id)
-          .in('status', ['success', 'pending'])
-          .order('created_at', { ascending: false });
-        if (directData) setDirectSales(directData as any);
-
-        // Fetch user's own successful purchases to see codes
-        const { data: ownOrders } = await supabase
-          .from('orders')
-          .select('*, ebook:ebooks(*)')
-          .eq('user_id', user.id)
-          .eq('status', 'success');
-        
-        if (ownOrders) {
-          setOwnPurchases(ownOrders as any);
-          setHasPurchasedAny(ownOrders.length > 0);
-        }
-
-        // Fetch Withdrawals
-        const { data: withdrawalData } = await supabase
-          .from('withdrawals')
-          .select('*')
-          .eq('user_id', user.id)
-          .order('created_at', { ascending: false });
-        if (withdrawalData) setWithdrawals(withdrawalData as WithdrawalRequest[]);
-
-        // Fetch Clicks (Tracking)
-        const { count } = await supabase
-          .from('referral_tracking')
-          .select('*', { count: 'exact', head: true })
-          .eq('referrer_id', user.id);
-        setClickCount(count || 0);
-
-        setLoading(false);
-      };
-
+      setEmailId(user.email || '');
+      setMobileNumber(user.user_metadata?.mobile || '');
       fetchData();
 
       const profileChannel = supabase
@@ -162,7 +167,7 @@ export default function SellerDashboard({ user, isAdmin, isSeller }: { user: Use
     }, 0);
 
   const totalWithdrawn = withdrawals
-    .filter(w => w.status === 'success')
+    .filter(w => w.status === 'success' || w.status === 'pending')
     .reduce((acc, w) => acc + w.amount, 0);
 
   const totalBalance = (totalAffiliateEarnings + totalDirectEarnings) - totalWithdrawn;
@@ -220,6 +225,14 @@ export default function SellerDashboard({ user, isAdmin, isSeller }: { user: Use
       toast.error('Invalid UPI ID');
       return;
     }
+    if (mobileNumber.length < 10) {
+      toast.error('Invalid Mobile Number');
+      return;
+    }
+    if (!emailId.includes('@')) {
+      toast.error('Invalid Email ID');
+      return;
+    }
 
     setIsSubmittingWithdraw(true);
     try {
@@ -230,19 +243,14 @@ export default function SellerDashboard({ user, isAdmin, isSeller }: { user: Use
           user_id: user.id,
           amount,
           upi_id: upiId,
+          mobile_number: mobileNumber,
+          email_id: emailId,
+          purchase_utr: purchaseUtr,
           status: 'pending',
           created_at: new Date().toISOString()
         });
 
       if (withdrawError) throw withdrawError;
-
-      // 2. Reduce the profile balance (pessimistic lock would be better but this is simple demo)
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .update({ affiliate_earnings: totalBalance - amount })
-        .eq('uid', user.id);
-
-      if (profileError) throw profileError;
 
       toast.success('Withdrawal request submitted! Company will verify and process within 24-48 hours.');
       setIsWithdrawOpen(false);
@@ -255,7 +263,8 @@ export default function SellerDashboard({ user, isAdmin, isSeller }: { user: Use
   };
 
   const handleRefresh = () => {
-    window.location.reload();
+    fetchData();
+    toast.success('Data Refreshed');
   };
 
   if (loading) {
@@ -299,16 +308,45 @@ export default function SellerDashboard({ user, isAdmin, isSeller }: { user: Use
                 </div>
                 <div className="space-y-4">
                   <div className="space-y-2">
-                    <Label className="font-bold text-zinc-600 ml-1">UPI ID</Label>
+                    <Label className="font-bold text-zinc-600 ml-1 text-xs uppercase tracking-wider">UPI ID (to receive payment)</Label>
                     <Input 
-                      placeholder="e.g. name@upi" 
+                      placeholder="name@upi" 
                       className="h-12 rounded-xl border-2 focus:border-zinc-900 border-zinc-100 font-medium"
                       value={upiId}
                       onChange={(e) => setUpiId(e.target.value)}
                     />
                   </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label className="font-bold text-zinc-600 ml-1 text-xs uppercase tracking-wider">Mobile Number</Label>
+                      <Input 
+                        placeholder="10-digit mobile" 
+                        className="h-12 rounded-xl border-2 focus:border-zinc-900 border-zinc-100 font-medium"
+                        value={mobileNumber}
+                        onChange={(e) => setMobileNumber(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="font-bold text-zinc-600 ml-1 text-xs uppercase tracking-wider">Email ID</Label>
+                      <Input 
+                        placeholder="email@example.com" 
+                        className="h-12 rounded-xl border-2 focus:border-zinc-900 border-zinc-100 font-medium"
+                        value={emailId}
+                        onChange={(e) => setEmailId(e.target.value)}
+                      />
+                    </div>
+                  </div>
                   <div className="space-y-2">
-                    <Label className="font-bold text-zinc-600 ml-1">Amount to Withdraw</Label>
+                    <Label className="font-bold text-zinc-600 ml-1 text-xs uppercase tracking-wider">Your Purchase UTR (to verify account)</Label>
+                    <Input 
+                      placeholder="12-digit UTR from your purchase" 
+                      className="h-12 rounded-xl border-2 focus:border-zinc-900 border-zinc-100 font-medium"
+                      value={purchaseUtr}
+                      onChange={(e) => setPurchaseUtr(e.target.value.replace(/\D/g, '').slice(0, 12))}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="font-bold text-zinc-600 ml-1 text-xs uppercase tracking-wider">Amount to Withdraw</Label>
                     <Input 
                       type="number"
                       placeholder="Enter amount" 
@@ -553,10 +591,14 @@ export default function SellerDashboard({ user, isAdmin, isSeller }: { user: Use
                       )}
                     </div>
                     <div>
-                      <p className="font-bold text-sm text-zinc-900 leading-tight">
-                        {sale.ebook?.seller_id === user?.id ? 'Direct Sale' : 'Affiliate Sale'}
-                      </p>
-                      <p className="text-[10px] text-zinc-400 font-medium">
+                      <div className="flex items-center gap-1.5">
+                        <p className="font-black text-[11px] text-zinc-900 leading-tight uppercase italic">
+                          {sale.ebook?.seller_id === user?.id ? 'Direct Sale' : 'Affiliate Sale'}
+                        </p>
+                        <span className="text-[10px] text-zinc-400">•</span>
+                        <p className="text-[10px] text-zinc-500 font-bold">Buyer: {sale.profiles?.display_name || 'Guest'}</p>
+                      </div>
+                      <p className="text-[10px] text-zinc-400 font-medium line-clamp-1">
                         {sale.ebook?.title} • {new Date(sale.created_at).toLocaleDateString()}
                       </p>
                     </div>

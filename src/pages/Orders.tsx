@@ -296,6 +296,10 @@ export default function Orders({ user }: { user: User | null }) {
 
       <Dialog open={!!readingEbook} onOpenChange={(open) => !open && setReadingEbook(null)}>
         <DialogContent className="sm:max-w-4xl max-w-[95vw] w-full h-[85vh] p-0 overflow-hidden border-none bg-zinc-900 rounded-3xl shadow-2xl">
+          <DialogHeader className="sr-only">
+            <DialogTitle>Reading: {readingEbook?.title}</DialogTitle>
+            <DialogDescription>PDF Viewer for {readingEbook?.title}</DialogDescription>
+          </DialogHeader>
           <div className="flex flex-col h-full">
             <div className="flex items-center justify-between p-4 bg-zinc-900 border-b border-zinc-800 shrink-0">
               <div className="flex items-center gap-4">

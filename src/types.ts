@@ -11,6 +11,8 @@ export interface Ebook {
   cosmofeed_url: string;
   seller_id: string;
   created_at: string;
+  is_verified?: boolean;
+  is_deleted?: boolean;
 }
 
 export interface Profile {
@@ -37,6 +39,7 @@ export interface Order {
   status: string;
   created_at: string;
   ebook?: Ebook;
+  profiles?: Profile;
 }
 
 export interface Review {

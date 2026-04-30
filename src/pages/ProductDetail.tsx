@@ -27,6 +27,7 @@ export default function ProductDetail({ user, isAdmin, isSeller }: { user: User 
   const [submittingReview, setSubmittingReview] = useState(false);
   const [copied, setCopied] = useState(false);
   const [hasPurchased, setHasPurchased] = useState(false);
+  const [hasAnyOrders, setHasAnyOrders] = useState(false);
   const [checkingPurchase, setCheckingPurchase] = useState(true);
 
   const [referralCodeInput, setReferralCodeInput] = useState('');
@@ -161,6 +162,7 @@ export default function ProductDetail({ user, isAdmin, isSeller }: { user: User 
       if (user) {
         fetchWishlist();
         checkPurchase();
+        checkTotalOrders();
 
         wishlistChannel = supabase
           .channel('wishlist_detail')
@@ -179,7 +181,10 @@ export default function ProductDetail({ user, isAdmin, isSeller }: { user: User 
             schema: 'public',
             table: 'orders',
             filter: `user_id=eq.${user.id}`
-          }, checkPurchase)
+          }, () => {
+             checkPurchase();
+             checkTotalOrders();
+          })
           .subscribe();
       } else {
         setCheckingPurchase(false);
@@ -201,10 +206,10 @@ export default function ProductDetail({ user, isAdmin, isSeller }: { user: User 
       .eq('id', id)
       .single();
     
-    if (data) {
+    if (data && !data.is_deleted) {
       setEbook(data as Ebook);
     } else {
-      toast.error('Ebook not found');
+      toast.error('Ebook not found or removed');
       navigate('/');
     }
     setLoading(false);
@@ -243,6 +248,18 @@ export default function ProductDetail({ user, isAdmin, isSeller }: { user: User 
     setCheckingPurchase(false);
   };
 
+  const checkTotalOrders = async () => {
+    if (!user) return;
+    const { data } = await supabase
+      .from('orders')
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('status', 'success')
+      .limit(1);
+    
+    setHasAnyOrders(!!data && data.length > 0);
+  };
+
   const toggleWishlist = async () => {
     if (!user) {
       toast.error('Please login to add to wishlist');
@@ -278,6 +295,33 @@ export default function ProductDetail({ user, isAdmin, isSeller }: { user: User 
       toast.error('Please login to purchase');
       return;
     }
+    
+    // Prevent self-purchase
+    if (user.id === ebook.seller_id) {
+      toast.error('You cannot purchase your own product');
+      return;
+    }
+
+    // Prevent duplicate purchase if already successful
+    if (hasPurchased) {
+      toast.error('You have already purchased this ebook');
+      return;
+    }
+
+    // Check for pending order to avoid double submission
+    const { data: pendingData } = await supabase
+      .from('orders')
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('ebook_id', ebook.id)
+      .eq('status', 'pending')
+      .limit(1);
+
+    if (pendingData && pendingData.length > 0) {
+      toast.error('You have a pending order for this ebook. Please wait for verification.');
+      return;
+    }
+
     setIsPaymentOpen(true);
     setIsVerifying(false);
   };
@@ -323,6 +367,13 @@ export default function ProductDetail({ user, isAdmin, isSeller }: { user: User 
     }
 
     let finalReferrerId = appliedReferrerId;
+
+    // RULE: If this is the user's FIRST EVER purchase, they cannot be referred.
+    // "the person who is purchasing for the first time will not applied to code referral"
+    if (!hasAnyOrders) {
+      console.log('First time buyer - overriding referral to null');
+      finalReferrerId = null;
+    }
 
     // 2. Extra double check to avoid FK violation: handle non-UUID referrers gracefully
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -514,14 +565,33 @@ export default function ProductDetail({ user, isAdmin, isSeller }: { user: User 
               <p className="text-zinc-400 text-sm font-medium mb-1">Price</p>
               <p className="text-3xl font-black">₹{ebook.price}</p>
             </div>
-            <Button 
-              size="lg"
-              className="flex-1 bg-orange-600 hover:bg-orange-700 text-white h-14 text-lg font-bold rounded-2xl gap-2 shadow-lg shadow-orange-600/20"
-              onClick={() => handlePurchase(ebook)}
-            >
-              <ShoppingBag className="w-5 h-5" />
-              Buy Now
-            </Button>
+            {hasPurchased ? (
+              <Button 
+                size="lg"
+                className="flex-1 bg-green-600 hover:bg-green-700 text-white h-14 text-lg font-bold rounded-2xl gap-2 cursor-default"
+                onClick={() => navigate('/orders')}
+              >
+                <Check className="w-5 h-5" />
+                Already Owned
+              </Button>
+            ) : user?.id === ebook.seller_id ? (
+              <Button 
+                size="lg"
+                disabled
+                className="flex-1 bg-zinc-700 text-white h-14 text-lg font-bold rounded-2xl"
+              >
+                Your Product
+              </Button>
+            ) : (
+              <Button 
+                size="lg"
+                className="flex-1 bg-orange-600 hover:bg-orange-700 text-white h-14 text-lg font-bold rounded-2xl gap-2 shadow-lg shadow-orange-600/20"
+                onClick={() => handlePurchase(ebook)}
+              >
+                <ShoppingBag className="w-5 h-5" />
+                Buy Now
+              </Button>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -651,10 +721,17 @@ export default function ProductDetail({ user, isAdmin, isSeller }: { user: User 
           <div className="grid gap-6 py-4">
             {!isVerifying ? (
               <div className="space-y-6">
-                {appliedReferrerId && (
+                {appliedReferrerId && hasAnyOrders && (
                   <div className="flex items-center gap-2 p-3 bg-green-50 rounded-xl border border-green-100">
                     <BadgeCheck className="w-4 h-4 text-green-600" />
                     <p className="text-[10px] text-green-700 font-bold uppercase tracking-tight">Referral Applied Successfully</p>
+                  </div>
+                )}
+                
+                {appliedReferrerId && !hasAnyOrders && (
+                  <div className="flex items-center gap-2 p-3 bg-orange-50 rounded-xl border border-orange-100">
+                    <TrendingUp className="w-4 h-4 text-orange-600" />
+                    <p className="text-[10px] text-orange-700 font-bold uppercase tracking-tight">Referral not applicable for first purchase</p>
                   </div>
                 )}
 

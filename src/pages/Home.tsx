@@ -55,6 +55,7 @@ export default function Home({ user }: { user: User | null }) {
       const { data } = await supabase
         .from('ebooks')
         .select('*')
+        .eq('is_deleted', false)
         .order('created_at', { ascending: false });
       if (data) setEbooks(data as Ebook[]);
     };

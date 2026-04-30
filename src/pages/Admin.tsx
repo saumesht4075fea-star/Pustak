@@ -1,7 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { motion } from 'motion/react';
-import { Plus, Pencil, Trash2, Package, Users, IndianRupee, BookOpen, Upload, X, Loader2, Image as ImageIcon, ExternalLink, BadgeCheck, Share2 } from 'lucide-react';
+import { 
+  Plus, Pencil, Trash2, Package, Users, IndianRupee, BookOpen, Upload, X, 
+  Loader2, Image as ImageIcon, ExternalLink, BadgeCheck, Share2, 
+  Search, Filter, Download, ChartBar, CreditCard, LayoutDashboard,
+  CheckCircle2, AlertCircle, History
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -13,10 +18,16 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { toast } from 'sonner';
 import { Ebook, Order, Profile } from '../types';
 
+type AdminTab = 'overview' | 'utr' | 'payouts' | 'reports' | 'products' | 'sellers';
+
 export default function Admin() {
+  const [activeTab, setActiveTab] = useState<AdminTab>('overview');
   const [ebooks, setEbooks] = useState<Ebook[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [sellers, setSellers] = useState<Profile[]>([]);
+  const [withdrawals, setWithdrawals] = useState<any[]>([]);
+  const [sellerSearch, setSellerSearch] = useState('');
+  const [viewingUser, setViewingUser] = useState<Profile | null>(null);
   const [isAdding, setIsAdding] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -24,6 +35,11 @@ export default function Admin() {
   const [editingEbook, setEditingEbook] = useState<Ebook | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   
+  const [utrSearch, setUtrSearch] = useState('');
+  const [utrClipboard, setUtrClipboard] = useState('');
+  const [nameSearch, setNameSearch] = useState('');
+  const [upiSearch, setUpiSearch] = useState('');
+
   const [newEbook, setNewEbook] = useState<Partial<Ebook>>({
     title: '',
     author: '',
@@ -39,14 +55,37 @@ export default function Admin() {
 
   const [editFormData, setEditFormData] = useState<Partial<Ebook>>({});
 
+  const parseClipboard = (text: string) => {
+    setUtrClipboard(text);
+    
+    // Extract UTR (usually 10-12 digits)
+    const utrMatch = text.match(/\d{10,12}/);
+    if (utrMatch) setUtrSearch(utrMatch[0]);
+
+    // Simple name extraction
+    const nameMatch = text.match(/(?:from|by|to)\s+([A-Za-z\s]{3,30})/i);
+    if (nameMatch) setNameSearch(nameMatch[1].trim());
+
+    // Upi ID
+    const upiMatch = text.match(/[a-zA-Z0-9.\-_]{2,25}@[a-zA-Z]{2,20}/);
+    if (upiMatch) setUpiSearch(upiMatch[0]);
+  };
+
+  const filteredPendingOrders = orders.filter(o => {
+    if (o.status !== 'pending') return false;
+    
+    const matchesUtr = utrSearch === '' || o.transaction_id?.includes(utrSearch);
+    const matchesName = nameSearch === '' || o.profiles?.display_name?.toLowerCase().includes(nameSearch.toLowerCase());
+    const matchesUpi = upiSearch === '' || false; // We don't store buyer UPI in Order yet?
+    
+    return matchesUtr && matchesName && matchesUpi;
+  });
+
   const handleFileUpload = async (file: File, type: 'cover' | 'ebook', isEdit: boolean = false) => {
     setIsUploading(true);
     const toastId = toast.loading(`Uploading ${type === 'cover' ? 'cover' : 'ebook'}...`);
     
     try {
-      // 1. Try to upload to Supabase Storage if possible
-      // Note: This assumes a bucket named 'ebooks' exists. 
-      // If it fails, we fall back to base64 to ensure it works even without bucket setup.
       const fileExt = file.name.split('.').pop();
       const fileName = `${Math.random()}.${fileExt}`;
       const filePath = `${type}s/${fileName}`;
@@ -64,8 +103,6 @@ export default function Admin() {
         }
         toast.success(`${type === 'cover' ? 'Image' : 'PDF'} uploaded to storage!`, { id: toastId });
       } else {
-        // 2. Fallback to base64 if storage is not set up
-        console.warn('Storage upload failed, falling back to database storage:', storageError);
         const reader = new FileReader();
         reader.onload = async (e) => {
           const base64 = e.target?.result as string;
@@ -85,95 +122,43 @@ export default function Admin() {
     }
   };
 
-  const [withdrawals, setWithdrawals] = useState<any[]>([]);
+  const fetchData = async () => {
+    const { data: ebooksData } = await supabase
+      .from('ebooks')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (ebooksData) setEbooks(ebooksData as Ebook[]);
+
+    const { data: ordersData } = await supabase
+      .from('orders')
+      .select('*, ebook:ebooks(*), profiles(*)')
+      .order('created_at', { ascending: false });
+    if (ordersData) setOrders(ordersData as any[]);
+
+    const { data: sellersData } = await supabase
+      .from('profiles')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (sellersData) setSellers(sellersData as Profile[]);
+
+    const { data: withdrawData } = await supabase
+      .from('withdrawals')
+      .select('*, profiles(display_name, email)')
+      .order('created_at', { ascending: false });
+    if (withdrawData) setWithdrawals(withdrawData);
+  };
 
   useEffect(() => {
-    const fetchData = async () => {
-      // Ebooks Subscription
-      const { data: ebooksData } = await supabase
-        .from('ebooks')
-        .select('*')
-        .order('created_at', { ascending: false });
-      if (ebooksData) setEbooks(ebooksData as Ebook[]);
-
-      // Orders Subscription
-      const { data: ordersData } = await supabase
-        .from('orders')
-        .select('*, ebook:ebooks(*)')
-        .order('created_at', { ascending: false });
-      if (ordersData) setOrders(ordersData as Order[]);
-
-      // Sellers Subscription
-      const { data: sellersData } = await supabase
-        .from('profiles')
-        .select('*')
-        .in('role', ['seller', 'admin'])
-        .order('created_at', { ascending: false });
-      if (sellersData) setSellers(sellersData as Profile[]);
-
-      // Withdrawals
-      const { data: withdrawData } = await supabase
-        .from('withdrawals')
-        .select('*, profiles(display_name, email)')
-        .order('created_at', { ascending: false });
-      if (withdrawData) setWithdrawals(withdrawData);
-    };
-
     fetchData();
-
-    // Set up real-time subscriptions
-    const ebooksChannel = supabase.channel('admin_ebooks').on('postgres_changes', { event: '*', schema: 'public', table: 'ebooks' }, fetchData).subscribe();
-    const ordersChannel = supabase.channel('admin_orders').on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, fetchData).subscribe();
-    const profilesChannel = supabase.channel('admin_profiles').on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, fetchData).subscribe();
-    const withdrawalsChannel = supabase.channel('admin_withdrawals').on('postgres_changes', { event: '*', schema: 'public', table: 'withdrawals' }, fetchData).subscribe();
-
-    return () => {
-      supabase.removeChannel(ebooksChannel);
-      supabase.removeChannel(ordersChannel);
-      supabase.removeChannel(profilesChannel);
-      supabase.removeChannel(withdrawalsChannel);
-    };
+    const sub = supabase.channel('admin_all').on('postgres_changes', { event: '*', schema: 'public' }, fetchData).subscribe();
+    return () => { supabase.removeChannel(sub); };
   }, []);
-
-  const handleApproveWithdrawal = async (withdraw: any) => {
-    try {
-      const { error } = await supabase
-        .from('withdrawals')
-        .update({ status: 'success' })
-        .eq('id', withdraw.id);
-      
-      if (error) throw error;
-      toast.success('Withdrawal marked as success!');
-    } catch (err: any) {
-      toast.error(err.message);
-    }
-  };
 
   const handleAddEbook = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
-
-      // Ensure profile exists to avoid FK error
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('uid')
-        .eq('uid', user.id)
-        .single();
-      
-      if (!profile) {
-        // Create basic profile if missing
-        const adminEmails = ['saumesht4075fea@gmail.com', 'mohittttt868@gmail.com'];
-        const role = adminEmails.includes(user.email || '') ? 'admin' : 'customer';
-        await supabase.from('profiles').upsert({
-          uid: user.id,
-          email: user.email,
-          display_name: user.user_metadata?.display_name || user.email?.split('@')[0],
-          role: role,
-          created_at: new Date().toISOString()
-        });
-      }
 
       const targetSellerId = newEbook.seller_id || user.id;
 
@@ -188,7 +173,7 @@ export default function Admin() {
           cover_url: newEbook.cover_url,
           file_url: newEbook.file_url,
           category: newEbook.category,
-          cosmofeed_url: newEbook.cosmofeed_url,
+          cosmofeed_url: newEbook.cosmofeed_url || '',
           seller_id: targetSellerId,
           created_at: new Date().toISOString()
         });
@@ -198,19 +183,11 @@ export default function Admin() {
       toast.success('Ebook added successfully');
       setIsAdding(false);
       setNewEbook({
-        title: '',
-        author: '',
-        description: '',
-        price: 0,
-        commission_amount: 0,
-        cover_url: '',
-        file_url: '',
-        category: 'Fiction',
-        cosmofeed_url: '',
-        seller_id: ''
+        title: '', author: '', description: '', price: 0, commission_amount: 0,
+        cover_url: '', file_url: '', category: 'Fiction', cosmofeed_url: '', seller_id: ''
       });
     } catch (error: any) {
-      toast.error(`Database Error: ${error.message || 'Failed to add ebook'}`);
+      toast.error(error.message);
     }
   };
 
@@ -223,715 +200,822 @@ export default function Admin() {
   const handleEditEbook = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingEbook) return;
-
     try {
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { id, created_at, ...updateData } = editFormData as Ebook;
-      
-      const { error } = await supabase
-        .from('ebooks')
-        .update(updateData)
-        .eq('id', editingEbook.id);
-      
+      const { error } = await supabase.from('ebooks').update(updateData).eq('id', editingEbook.id);
       if (error) throw error;
-      
       toast.success('Ebook updated successfully');
       setIsEditing(false);
-      setEditingEbook(null);
     } catch (error: any) {
-      toast.error(`Error: ${error.message || 'Failed to update ebook'}`);
+      toast.error(error.message);
     }
   };
 
-  const onDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-  };
-
-  const onDrop = (e: React.DragEvent, type: 'cover' | 'ebook', isEdit: boolean = false) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const files = e.dataTransfer.files;
-    if (files && files.length > 0) {
-      handleFileUpload(files[0], type, isEdit);
+  const handleApproveWithdrawal = async (withdraw: any) => {
+    const toastId = toast.loading('Processing payout...');
+    try {
+      const { error } = await supabase
+        .from('withdrawals')
+        .update({ status: 'success' })
+        .eq('id', withdraw.id);
+      
+      if (error) throw error;
+      toast.success('Withdrawal marked as success!', { id: toastId });
+    } catch (err: any) {
+      toast.error(err.message, { id: toastId });
     }
   };
 
   const handleApproveOrder = async (order: Order) => {
+    const toastId = toast.loading('Approving order...');
     try {
-      // 1. Update order status
-      const { error: orderError } = await supabase
-        .from('orders')
-        .update({ status: 'success' })
-        .eq('id', order.id);
-      
+      const { error: orderError } = await supabase.from('orders').update({ status: 'success' }).eq('id', order.id);
       if (orderError) throw orderError;
 
-      // 2. Award referral commission if applicable
       if (order.referrer_id) {
-        const { data: refProfile, error: refError } = await supabase
-          .from('profiles')
-          .select('uid, affiliate_earnings')
-          .eq('uid', order.referrer_id)
-          .single();
-        
+        const { data: refProfile } = await supabase.from('profiles').select('*').eq('uid', order.referrer_id).single();
         if (refProfile) {
           const commission = order.commission_amount || order.ebook?.commission_amount || 0;
-          if (commission > 0) {
-            const { error: earnError } = await supabase
-              .from('profiles')
-              .update({
-                affiliate_earnings: (refProfile.affiliate_earnings || 0) + commission
-              })
-              .eq('uid', order.referrer_id);
-            
-            if (earnError) {
-              console.error('Failed to award commission:', earnError);
-              toast.error('Order approved, but failed to award referral commission');
-            } else {
-              toast.success(`Commission of ₹${commission} awarded to referrer!`);
-            }
-          }
-        } else if (refError) {
-          console.warn('Referrer profile not found during approval:', refError);
+          await supabase.from('profiles').update({ affiliate_earnings: (refProfile.affiliate_earnings || 0) + commission }).eq('uid', order.referrer_id);
         }
       }
 
-      // 3. Award earnings to the Ebook Seller (Owner)
       const sellerId = order.ebook?.seller_id;
       if (sellerId) {
-        const { data: sellerProfile } = await supabase
-          .from('profiles')
-          .select('uid, earnings')
-          .eq('uid', sellerId)
-          .single();
-        
+        const { data: sellerProfile } = await supabase.from('profiles').select('*').eq('uid', sellerId).single();
         if (sellerProfile) {
-          // Amount for seller = Total Price - Commission - Admin Fee (₹60)
           const commission = order.commission_amount || order.ebook?.commission_amount || 0;
           const adminFee = 60;
           const sellerNet = order.amount - commission - adminFee;
-          
           if (sellerNet > 0) {
-            await supabase
-              .from('profiles')
-              .update({
-                earnings: (sellerProfile.earnings || 0) + sellerNet
-              })
-              .eq('uid', sellerId);
-            
-            toast.success(`₹${sellerNet} awarded to ebook owner!`);
+            await supabase.from('profiles').update({ earnings: (sellerProfile.earnings || 0) + sellerNet }).eq('uid', sellerId);
           }
         }
       }
 
-      toast.success('Order approved successfully');
+      toast.success('Order approved successfully!', { id: toastId });
+      fetchData();
     } catch (error: any) {
-      toast.error(`Approval Error: ${error.message || 'Failed to approve order'}`);
+      toast.error(error.message, { id: toastId });
     }
   };
 
   const handleRejectOrder = async (orderId: string) => {
     try {
-      const { error } = await supabase
-        .from('orders')
-        .update({ status: 'failed' })
-        .eq('id', orderId);
-      
+      const { error } = await supabase.from('orders').update({ status: 'failed' }).eq('id', orderId);
       if (error) throw error;
-      
       toast.success('Order rejected');
+      fetchData();
     } catch (error: any) {
-      toast.error(`Reject Error: ${error.message || 'Failed to reject order'}`);
+      toast.error(error.message);
     }
   };
 
-  const handleDeleteEbook = async () => {
+  const handleSoftDeleteEbook = async () => {
     if (!deletingId) return;
-    
     try {
-      const { error } = await supabase
-        .from('ebooks')
-        .delete()
-        .eq('id', deletingId);
-      
+      const { error } = await supabase.from('ebooks').update({ is_deleted: true }).eq('id', deletingId);
       if (error) throw error;
-      
-      toast.success('Ebook deleted successfully');
+      toast.success('Ebook removed from store (Sales report preserved)');
       setIsDeleting(false);
-      setDeletingId(null);
     } catch (error: any) {
-      toast.error(`Delete Error: ${error.message || 'Failed to delete ebook'}`);
+       toast.error(error.message);
     }
   };
 
-  const confirmDelete = (id: string) => {
-    setDeletingId(id);
-    setIsDeleting(true);
+  const handleVerifyEbook = async (id: string, status: boolean) => {
+    try {
+      const { error } = await supabase.from('ebooks').update({ is_verified: status }).eq('id', id);
+      if (error) throw error;
+      toast.success(status ? 'Product Verified' : 'Verification Revoked');
+    } catch (error: any) {
+      toast.error(error.message);
+    }
   };
 
-  const stats = [
-    { title: 'Total Revenue', value: `₹${orders.reduce((acc, o) => acc + o.amount, 0)}`, icon: IndianRupee, color: 'text-green-600' },
-    { title: 'Total Orders', value: orders.length, icon: Package, color: 'text-blue-600' },
-    { title: 'Total Ebooks', value: ebooks.length, icon: BookOpen, color: 'text-orange-600' },
-    { title: 'Active Users', value: new Set(orders.map(o => o.user_id)).size, icon: Users, color: 'text-purple-600' },
-  ];
+  const onDragOver = (e: React.DragEvent) => { e.preventDefault(); e.stopPropagation(); };
+  const onDrop = (e: React.DragEvent, type: 'cover' | 'ebook', isEdit: boolean = false) => {
+    e.preventDefault(); e.stopPropagation();
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) handleFileUpload(files[0], type, isEdit);
+  };
+
+  const totalRevenue = orders.filter(o => o.status === 'success').reduce((acc, o) => acc + o.amount, 0);
+  const referralRevenue = orders.filter(o => o.status === 'success' && o.referrer_id).reduce((acc, o) => acc + o.amount, 0);
+  const directRevenue = orders.filter(o => o.status === 'success' && !o.referrer_id).reduce((acc, o) => acc + o.amount, 0);
+  const pendingAmount = orders.filter(o => o.status === 'pending').reduce((acc, o) => acc + o.amount, 0);
+
+  const NavItem = ({ id, label, icon: Icon }: { id: AdminTab, label: string, icon: any }) => (
+    <button
+      onClick={() => setActiveTab(id)}
+      className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-black transition-all ${
+        activeTab === id 
+          ? 'bg-zinc-900 text-white shadow-lg shadow-zinc-900/20' 
+          : 'text-zinc-500 hover:bg-zinc-100'
+      }`}
+    >
+      <Icon className="w-4 h-4" />
+      <span className="hidden sm:inline">{label}</span>
+    </button>
+  );
 
   return (
-    <div className="space-y-8">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className="space-y-6 max-w-7xl mx-auto pb-20">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
-          <h1 className="text-3xl font-bold tracking-tighter">Admin Dashboard</h1>
-          <p className="text-zinc-500 text-sm">Manage your store, ebooks, and track sales using Supabase.</p>
+          <h1 className="text-4xl font-black tracking-tight text-zinc-900">Admin Command</h1>
+          <p className="text-zinc-500 font-bold uppercase text-[10px] tracking-widest mt-1">Control Center • Verified Operations</p>
         </div>
-        <div className="flex gap-2">
-          <Dialog>
-            <DialogTrigger asChild>
-              <Button variant="outline" className="gap-2">
-                <Upload className="w-4 h-4" />
-                How to Upload?
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-h-[90vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>Guide: Uploading Ebooks</DialogTitle>
-                <DialogDescription>
-                  Follow these steps to add a new ebook to your store.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4 text-sm text-zinc-600">
-                <p>1. <strong>Select Files</strong>: You can now directly select PDF/EPUB files and cover images from your computer.</p>
-                <p>2. <strong>Instant Preview</strong>: The cover image will preview instantly after you drop it or select it.</p>
-                <p>3. <strong>Automatic Saving</strong>: When you click Create/Update, the files are securely saved to the database.</p>
-                <p>4. <strong>UPI Checkout</strong>: Customers will pay via the QR code or UPI link you provided in the checkout settings.</p>
-              </div>
-            </DialogContent>
-          </Dialog>
-          <Dialog open={isAdding} onOpenChange={setIsAdding}>
-            <DialogTrigger asChild>
-              <Button className="bg-orange-600 hover:bg-orange-700 gap-2">
-                <Plus className="w-4 h-4" />
-                Add New Ebook
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>Add New Ebook</DialogTitle>
-                <DialogDescription>
-                  Enter the details of the new ebook you want to add.
-                </DialogDescription>
-              </DialogHeader>
-              <form onSubmit={handleAddEbook} className="space-y-4 py-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="title">Title</Label>
-                    <Input id="title" required value={newEbook.title} onChange={e => setNewEbook({...newEbook, title: e.target.value})} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="author">Author</Label>
-                    <Input id="author" required value={newEbook.author} onChange={e => setNewEbook({...newEbook, author: e.target.value})} />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="description">Description</Label>
-                  <Textarea id="description" required value={newEbook.description} onChange={e => setNewEbook({...newEbook, description: e.target.value})} />
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="price">Price (INR)</Label>
-                    <Input id="price" type="number" required value={newEbook.price} onChange={e => setNewEbook({...newEbook, price: Number(e.target.value)})} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="commission">Referral Commission (INR)</Label>
-                    <Input id="commission" type="number" required value={newEbook.commission_amount} onChange={e => setNewEbook({...newEbook, commission_amount: Number(e.target.value)})} />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="seller_id">Assign to Seller (Optional)</Label>
-                  <Select 
-                    value={newEbook.seller_id} 
-                    onValueChange={val => setNewEbook({...newEbook, seller_id: val})}
-                  >
-                    <SelectTrigger id="seller_id" className="h-10 rounded-md border-zinc-200">
-                      <SelectValue placeholder="Platform Admin (Default)" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="">Platform Admin</SelectItem>
-                      {sellers.map(s => (
-                        <SelectItem key={s.uid} value={s.uid}>{s.display_name} ({s.email})</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="category">Category</Label>
-                  <select 
-                    id="category"
-                    className="flex h-10 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm ring-offset-white file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-zinc-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-950 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                    value={newEbook.category} 
-                    onChange={e => setNewEbook({...newEbook, category: e.target.value})}
-                  >
-                      <option value="Fiction">Fiction</option>
-                      <option value="Non-Fiction">Non-Fiction</option>
-                      <option value="Self-Help">Self-Help</option>
-                      <option value="Business">Business</option>
-                      <option value="Technology">Technology</option>
-                      <option value="Finance">Finance</option>
-                    </select>
-                  </div>
-                <div className="space-y-2">
-                  <Label>Cover Image</Label>
-                  <div className="flex gap-4 items-center">
-                    <div className="relative w-24 h-32 bg-zinc-100 rounded-lg border-2 border-dashed border-zinc-200 flex items-center justify-center overflow-hidden shrink-0">
-                      {newEbook.cover_url ? (
-                        <img src={newEbook.cover_url || undefined} alt="Preview" className="w-full h-full object-cover" />
-                      ) : (
-                        <ImageIcon className="w-8 h-8 text-zinc-300" />
-                      )}
-                    </div>
-                    <div className="flex-1">
-                      <label 
-                        onDragOver={onDragOver}
-                        onDrop={(e) => onDrop(e, 'cover')}
-                        className="flex flex-col items-center justify-center w-full h-32 border-2 border-zinc-200 border-dashed rounded-lg cursor-pointer bg-zinc-50 hover:bg-zinc-100 transition-colors"
-                      >
-                        <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                          <Upload className="w-6 h-6 text-zinc-400 mb-2" />
-                          <p className="text-xs text-zinc-500 font-medium">Click or drag to upload cover</p>
-                        </div>
-                        <input 
-                          type="file" 
-                          className="hidden" 
-                          accept="image/*"
-                          onChange={(e) => e.target.files && handleFileUpload(e.target.files[0], 'cover')}
-                        />
-                      </label>
-                    </div>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="file_url">Ebook File (PDF)</Label>
-                  <div className="relative">
-                    <label 
-                      onDragOver={onDragOver}
-                      onDrop={(e) => onDrop(e, 'ebook')}
-                      className="flex items-center justify-center w-full h-20 border-2 border-zinc-200 border-dashed rounded-lg cursor-pointer bg-zinc-50 hover:bg-zinc-100 transition-colors"
-                    >
-                      <div className="flex items-center gap-3">
-                        <BookOpen className="w-5 h-5 text-zinc-400" />
-                        <span className="text-sm text-zinc-500 font-medium">
-                          {newEbook.file_url ? 'PDF Uploaded ✓' : 'Select or drag PDF file'}
-                        </span>
-                      </div>
-                      <input 
-                        type="file" 
-                        className="hidden" 
-                        accept="application/pdf"
-                        onChange={(e) => e.target.files && handleFileUpload(e.target.files[0], 'ebook')}
-                      />
-                    </label>
-                  </div>
-                </div>
-                <Button type="submit" disabled={isUploading} className="w-full bg-orange-600 hover:bg-orange-700">
-                  {isUploading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-                  Create Ebook
-                </Button>
-              </form>
-            </DialogContent>
-          </Dialog>
-          <Dialog open={isEditing} onOpenChange={setIsEditing}>
-            <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>Edit Ebook</DialogTitle>
-                <DialogDescription>
-                  Modify the details of the ebook.
-                </DialogDescription>
-              </DialogHeader>
-              <form onSubmit={handleEditEbook} className="space-y-4 py-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="edit-title">Title</Label>
-                    <Input id="edit-title" required value={editFormData.title} onChange={e => setEditFormData({...editFormData, title: e.target.value})} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="edit-author">Author</Label>
-                    <Input id="edit-author" required value={editFormData.author} onChange={e => setEditFormData({...editFormData, author: e.target.value})} />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="edit-description">Description</Label>
-                  <Textarea id="edit-description" required value={editFormData.description} onChange={e => setEditFormData({...editFormData, description: e.target.value})} />
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="edit-price">Price (INR)</Label>
-                    <Input id="edit-price" type="number" required value={editFormData.price} onChange={e => setEditFormData({...editFormData, price: Number(e.target.value)})} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="edit-commission">Referral Commission (INR)</Label>
-                    <Input id="edit-commission" type="number" required value={editFormData.commission_amount} onChange={e => setEditFormData({...editFormData, commission_amount: Number(e.target.value)})} />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="edit_seller_id">Assign to Seller</Label>
-                  <Select 
-                    value={editFormData.seller_id} 
-                    onValueChange={val => setEditFormData({...editFormData, seller_id: val})}
-                  >
-                    <SelectTrigger id="edit_seller_id" className="h-10 rounded-md border-zinc-200">
-                      <SelectValue placeholder="Platform Admin" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {sellers.map(s => (
-                        <SelectItem key={s.uid} value={s.uid}>{s.display_name} ({s.email})</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="edit-category">Category</Label>
-                  <select 
-                    id="edit-category"
-                    className="flex h-10 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm ring-offset-white file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-zinc-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-950 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                    value={editFormData.category} 
-                    onChange={e => setEditFormData({...editFormData, category: e.target.value})}
-                  >
-                    <option value="Fiction">Fiction</option>
-                    <option value="Non-Fiction">Non-Fiction</option>
-                    <option value="Self-Help">Self-Help</option>
-                    <option value="Business">Business</option>
-                    <option value="Technology">Technology</option>
-                    <option value="Finance">Finance</option>
-                  </select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Cover Image</Label>
-                  <div className="flex gap-4 items-center">
-                    <div className="relative w-24 h-32 bg-zinc-100 rounded-lg border-2 border-dashed border-zinc-200 flex items-center justify-center overflow-hidden shrink-0">
-                      {editFormData.cover_url ? (
-                        <img src={editFormData.cover_url || undefined} alt="Preview" className="w-full h-full object-cover" />
-                      ) : (
-                        <ImageIcon className="w-8 h-8 text-zinc-300" />
-                      )}
-                    </div>
-                    <div className="flex-1">
-                      <label 
-                        onDragOver={onDragOver}
-                        onDrop={(e) => onDrop(e, 'cover', true)}
-                        className="flex flex-col items-center justify-center w-full h-32 border-2 border-zinc-200 border-dashed rounded-lg cursor-pointer bg-zinc-50 hover:bg-zinc-100 transition-colors"
-                      >
-                        <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                           <Upload className="w-6 h-6 text-zinc-400 mb-2" />
-                           <p className="text-xs text-zinc-500 font-medium">Click or drag to update cover</p>
-                        </div>
-                        <input 
-                           type="file" 
-                           className="hidden" 
-                           accept="image/*"
-                           onChange={(e) => e.target.files && handleFileUpload(e.target.files[0], 'cover', true)}
-                        />
-                      </label>
-                    </div>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="edit-file_url">Ebook File (PDF)</Label>
-                  <div className="relative">
-                    <label 
-                      onDragOver={onDragOver}
-                      onDrop={(e) => onDrop(e, 'ebook', true)}
-                      className="flex items-center justify-center w-full h-20 border-2 border-zinc-200 border-dashed rounded-lg cursor-pointer bg-zinc-50 hover:bg-zinc-100 transition-colors"
-                    >
-                      <div className="flex items-center gap-3">
-                        <BookOpen className="w-5 h-5 text-zinc-400" />
-                        <span className="text-sm text-zinc-500 font-medium">
-                          {editFormData.file_url ? 'PDF Selected ✓' : 'Select or drag PDF file'}
-                        </span>
-                      </div>
-                      <input 
-                        type="file" 
-                        className="hidden" 
-                        accept="application/pdf"
-                        onChange={(e) => e.target.files && handleFileUpload(e.target.files[0], 'ebook', true)}
-                      />
-                    </label>
-                  </div>
-                </div>
-                <Button type="submit" disabled={isUploading} className="w-full bg-orange-600 hover:bg-orange-700">
-                  {isUploading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-                  Update Ebook
-                </Button>
-              </form>
-            </DialogContent>
-          </Dialog>
-
-          <Dialog open={isDeleting} onOpenChange={setIsDeleting}>
-            <DialogContent className="sm:max-w-[400px]">
-              <DialogHeader>
-                <DialogTitle className="text-xl font-bold text-red-600">Delete Ebook?</DialogTitle>
-                <DialogDescription className="py-4">
-                  Are you sure you want to delete this ebook? This action cannot be undone and will remove the book from the storefront.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="flex gap-3 justify-end">
-                <Button variant="ghost" onClick={() => setIsDeleting(false)}>Cancel</Button>
-                <Button variant="destructive" className="bg-red-600 hover:bg-red-700 font-bold px-6" onClick={handleDeleteEbook}>
-                  Yes, Delete
-                </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
+        <div className="flex flex-wrap gap-2 bg-zinc-50 p-1.5 rounded-2xl border border-zinc-100">
+          <NavItem id="overview" label="Dashboard" icon={LayoutDashboard} />
+          <NavItem id="utr" label="UTR Matcher" icon={CheckCircle2} />
+          <NavItem id="reports" label="Sales Report" icon={ChartBar} />
+          <NavItem id="payouts" label="Withdrawals" icon={CreditCard} />
+          <NavItem id="products" label="Products" icon={Package} />
+          <NavItem id="sellers" label="Sellers" icon={Users} />
         </div>
       </div>
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {stats.map((stat, i) => (
-          <Card key={i} className="border-zinc-200 shadow-sm">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-zinc-500">{stat.title}</CardTitle>
-              <stat.icon className={`w-4 h-4 ${stat.color}`} />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold tracking-tight">{stat.value}</div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      {activeTab === 'overview' && (
+        <div className="space-y-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <Card className="border-zinc-200 shadow-sm bg-gradient-to-br from-white to-zinc-50">
+              <CardHeader className="pb-2">
+                <CardDescription className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Total Revenue</CardDescription>
+                <CardTitle className="text-3xl font-black text-zinc-900">₹{totalRevenue}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center gap-1 text-[10px] font-bold text-zinc-600">
+                  Total Gross Sales
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="border-zinc-200 shadow-sm bg-gradient-to-br from-white to-zinc-50">
+              <CardHeader className="pb-2">
+                <CardDescription className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Affiliate Sales</CardDescription>
+                <CardTitle className="text-3xl font-black text-green-600">₹{referralRevenue}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center gap-1 text-[10px] font-bold text-green-600">
+                  Revenue via Referrals
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="border-zinc-200 shadow-sm">
+              <CardHeader className="pb-2">
+                <CardDescription className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Direct Sales</CardDescription>
+                <CardTitle className="text-3xl font-black text-zinc-900">₹{directRevenue}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-[10px] font-bold text-zinc-400">Revenue without Referrals</p>
+              </CardContent>
+            </Card>
+          </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Pending Orders Approvals */}
-        <Card className="border-zinc-200 shadow-sm col-span-full ring-2 ring-orange-100 bg-orange-50/10">
-          <CardHeader className="flex flex-row items-center justify-between">
-            <div>
-              <CardTitle className="text-xl font-black text-orange-600">Verification Queue</CardTitle>
-              <CardDescription>Pending UPI payments that need your approval.</CardDescription>
-            </div>
-            <div className="bg-orange-600 text-white px-3 py-1 rounded-full text-xs font-black">
-              {orders.filter(o => o.status === 'pending').length} PENDING
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {orders.filter(o => o.status === 'pending').map(order => (
-                <div key={order.id} className="flex flex-col p-4 bg-white rounded-2xl border border-orange-200 shadow-sm transition-all">
-                  <div className="flex justify-between items-start mb-4">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-mono text-zinc-400">Order #{order.id.slice(-6)}</span>
-                        <span className="text-sm font-black text-zinc-900">₹{order.amount}</span>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <Card className="border-zinc-200 shadow-sm">
+              <CardHeader className="pb-2">
+                <CardDescription className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Total Users</CardDescription>
+                <CardTitle className="text-3xl font-black text-zinc-900">{sellers.filter(s => s.role !== 'admin').length}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-[10px] font-bold text-zinc-400">Registered Affiliates</p>
+              </CardContent>
+            </Card>
+            <Card className="border-zinc-200 shadow-sm">
+              <CardHeader className="pb-2">
+                <CardDescription className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Verification Pool</CardDescription>
+                <CardTitle className="text-3xl font-black text-orange-600">₹{pendingAmount}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-[10px] font-bold text-zinc-400">{orders.filter(o => o.status === 'pending').length} Unmatched UTRs</p>
+              </CardContent>
+            </Card>
+            <Card className="border-zinc-200 shadow-sm">
+              <CardHeader className="pb-2">
+                <CardDescription className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Payout Pool</CardDescription>
+                <CardTitle className="text-3xl font-black text-blue-600">₹{withdrawals.filter(w => w.status === 'pending').reduce((acc, w) => acc + w.amount, 0)}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-[10px] font-bold text-zinc-400">{withdrawals.filter(w => w.status === 'pending').length} Active Requests</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+             <Card className="border-zinc-200 shadow-xl ring-2 ring-orange-100">
+                <CardHeader>
+                  <CardTitle className="text-xl font-black text-orange-600 flex items-center gap-2">
+                    <AlertCircle className="w-5 h-5" />
+                    Action Required
+                  </CardTitle>
+                  <CardDescription>Transactions waiting for UTR verification</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {orders.filter(o => o.status === 'pending').slice(0, 5).map(order => (
+                      <div key={order.id} className="p-4 bg-orange-50/30 rounded-2xl border border-orange-100 flex items-center justify-between">
+                        <div>
+                          <p className="text-xs font-black text-zinc-900">UTR: {order.transaction_id}</p>
+                          <p className="text-[10px] font-bold text-orange-600 uppercase">₹{order.amount} • {order.profiles?.display_name}</p>
+                        </div>
+                        <Button 
+                          size="sm" 
+                          className="bg-orange-600 hover:bg-orange-700 text-[10px] font-black h-8 rounded-lg"
+                          onClick={() => setActiveTab('utr')}
+                        >
+                          VERIFY
+                        </Button>
                       </div>
-                      <p className="text-[10px] text-zinc-500 font-bold line-clamp-1">{order.ebook?.title}</p>
-                      <p className="text-xs font-bold text-orange-600 uppercase tracking-wider">
-                        UTR: {order.transaction_id || 'N/A'}
-                      </p>
-                      <div className="flex flex-wrap gap-1 mt-1">
-                        <span className="text-[9px] font-black bg-zinc-100 text-zinc-500 px-1.5 py-0.5 rounded uppercase font-mono">CODE: {order.referral_code || 'LEGACY'}</span>
-                        {order.referrer_id && (
-                          <div className="flex items-center gap-1">
-                            <Share2 className="w-3 h-3 text-blue-600" />
-                            <span className="text-[10px] font-black text-blue-600 uppercase tracking-tighter bg-blue-50 px-1.5 rounded">Referral Attached</span>
+                    ))}
+                    {orders.filter(o => o.status === 'pending').length === 0 && (
+                      <div className="text-center py-8">
+                        <CheckCircle2 className="w-8 h-8 text-green-500 mx-auto mb-2" />
+                        <p className="text-sm font-bold text-zinc-400 uppercase italic">All Clean • No Pending Work</p>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+             </Card>
+
+             <Card className="border-zinc-200 shadow-sm overflow-hidden">
+                <CardHeader className="bg-zinc-50 border-b border-zinc-100">
+                  <CardTitle className="text-base font-black uppercase italic tracking-wider flex items-center gap-2">
+                    <Package className="w-4 h-4" />
+                    Product Performance
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead className="bg-zinc-50/50 border-b border-zinc-100">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-[10px] font-black uppercase tracking-widest text-zinc-400">Book</th>
+                          <th className="px-4 py-3 text-center text-[10px] font-black uppercase tracking-widest text-zinc-400">Sales</th>
+                          <th className="px-4 py-3 text-right text-[10px] font-black uppercase tracking-widest text-zinc-400">Gross</th>
+                          <th className="px-4 py-3 text-right text-[10px] font-black uppercase tracking-widest text-zinc-400">Net (No Comm)</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-100">
+                        {ebooks.map(ebook => {
+                          const bookOrders = orders.filter(o => o.ebook_id === ebook.id && o.status === 'success');
+                          const gross = bookOrders.reduce((acc, o) => acc + o.amount, 0);
+                          const commission = bookOrders.reduce((acc, o) => acc + (o.commission_amount || 0), 0);
+                          const net = gross - commission;
+                          
+                          return (
+                            <tr key={ebook.id} className="hover:bg-zinc-50/50 transition-colors">
+                              <td className="px-4 py-3 border-none">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-8 h-10 bg-zinc-100 rounded shadow-sm shrink-0 overflow-hidden">
+                                     <img src={ebook.cover_url || ''} alt="" className="w-full h-full object-cover" />
+                                  </div>
+                                  <div className="min-w-0">
+                                    <p className="text-xs font-black text-zinc-900 truncate">{ebook.title}</p>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 text-center border-none">
+                                <span className="text-xs font-black text-zinc-900">{bookOrders.length}</span>
+                              </td>
+                              <td className="px-4 py-3 text-right border-none">
+                                <span className="text-xs font-black text-zinc-900">₹{gross}</span>
+                              </td>
+                              <td className="px-4 py-3 text-right border-none">
+                                <span className="text-xs font-black text-green-600">₹{net}</span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </CardContent>
+             </Card>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'utr' && (
+        <div className="space-y-8 animate-in fade-in duration-500">
+           <Card className="border-zinc-200 shadow-2xl">
+              <CardHeader className="bg-zinc-900 text-white rounded-t-3xl">
+                <CardTitle className="text-2xl font-black flex items-center gap-2">
+                  <CreditCard className="w-6 h-6 text-orange-500" />
+                  Live UTR Matching Panel
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-8">
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                   <div className="lg:col-span-1 space-y-6">
+                      <div className="bg-zinc-50 p-6 rounded-3xl border-2 border-zinc-100">
+                         <Label className="text-xs font-black uppercase text-zinc-400 tracking-tighter mb-2 block">Quick Clipboard Search</Label>
+                         <Textarea 
+                           placeholder="Paste block text from payment notification..."
+                           className="h-32 bg-white rounded-2xl border-2 focus:border-orange-500 transition-all font-medium text-sm"
+                           value={utrClipboard}
+                           onChange={(e) => parseClipboard(e.target.value)}
+                         />
+                      </div>
+                      <div className="space-y-4">
+                         <div className="space-y-1">
+                            <Label className="text-[10px] font-black uppercase text-zinc-400 ml-1">Manual UTR Match</Label>
+                            <Input 
+                               placeholder="UTR Number..." 
+                               className="h-12 rounded-xl border-zinc-200 focus:border-zinc-900 font-bold"
+                               value={utrSearch}
+                               onChange={(e) => setUtrSearch(e.target.value)}
+                            />
+                         </div>
+                         <div className="space-y-1">
+                            <Label className="text-[10px] font-black uppercase text-zinc-400 ml-1">Buyer Name Match</Label>
+                            <Input 
+                               placeholder="Buyer Name..." 
+                               className="h-12 rounded-xl border-zinc-200 focus:border-zinc-900 font-bold"
+                               value={nameSearch}
+                               onChange={(e) => setNameSearch(e.target.value)}
+                            />
+                         </div>
+                      </div>
+                   </div>
+
+                   <div className="lg:col-span-2 space-y-4">
+                      <div className="flex items-center justify-between mb-2">
+                         <p className="text-xs font-black text-zinc-400 uppercase tracking-widest">
+                           {filteredPendingOrders.length} Results Matched
+                         </p>
+                         <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            onClick={() => {
+                              setUtrSearch('');
+                              setNameSearch('');
+                              setUpiSearch('');
+                              setUtrClipboard('');
+                            }} 
+                            className="text-[10px] font-black uppercase underline"
+                         >
+                            Clear All Filters
+                         </Button>
+                      </div>
+
+                      <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2">
+                         {filteredPendingOrders.map(order => (
+                             <div 
+                               key={order.id} 
+                               className={`p-6 rounded-3xl border-2 transition-all ${
+                                 utrSearch && order.transaction_id?.includes(utrSearch)
+                                   ? 'border-orange-500 bg-orange-50' 
+                                   : 'border-zinc-100 bg-white'
+                               }`}
+                             >
+                                <div className="flex flex-col sm:flex-row justify-between gap-6">
+                                   <div className="space-y-2 text-left">
+                                      <div className="flex items-center gap-2">
+                                         <Badge className="bg-zinc-900 font-black text-[9px]">ORDER #{order.id.slice(-6)}</Badge>
+                                         <Badge className={`font-black text-[9px] ${order.referrer_id ? 'bg-blue-600' : 'bg-purple-600'}`}>
+                                            {order.referrer_id ? 'REFERRAL' : 'DIRECT'}
+                                         </Badge>
+                                      </div>
+                                      <h3 className="text-2xl font-black text-zinc-900">₹{order.amount}</h3>
+                                      <div className="space-y-0.5">
+                                         <p className="text-sm font-bold text-zinc-700">{order.profiles?.display_name}</p>
+                                         <p className="text-[10px] font-medium text-zinc-500 italic">{order.ebook?.title}</p>
+                                         <p className="text-xs font-black text-orange-600 mt-2 bg-orange-100/50 w-fit px-2 rounded">UTR: {order.transaction_id}</p>
+                                      </div>
+                                   </div>
+                                   <div className="flex flex-col justify-end items-end gap-3">
+                                      <Button className="w-full bg-green-600 hover:bg-green-700 text-xs font-black rounded-xl h-10" onClick={() => handleApproveOrder(order)}>APPROVE</Button>
+                                      <Button variant="outline" className="w-full border-red-100 text-red-600 text-[10px] font-black rounded-xl h-10" onClick={() => handleRejectOrder(order.id)}>REJECT</Button>
+                                   </div>
+                                </div>
+                             </div>
+                           ))}
+                      </div>
+                   </div>
+                </div>
+              </CardContent>
+           </Card>
+        </div>
+      )}
+
+      {activeTab === 'reports' && (
+        <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500">
+           <Card className="border-zinc-200 shadow-sm">
+              <CardHeader>
+                 <CardTitle className="text-xl font-black">Digital Product Sales Report</CardTitle>
+                 <CardDescription>Track revenue per product, including removed listings.</CardDescription>
+              </CardHeader>
+              <CardContent px-0>
+                 <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                       <thead className="bg-zinc-50 border-b border-zinc-100">
+                          <tr>
+                             <th className="px-6 py-4 text-[10px] font-black uppercase text-zinc-400">Product</th>
+                             <th className="px-6 py-4 text-[10px] font-black uppercase text-zinc-400">Status</th>
+                             <th className="px-6 py-4 text-[10px] font-black uppercase text-zinc-400 text-right">Qty</th>
+                             <th className="px-6 py-4 text-[10px] font-black uppercase text-zinc-400 text-right">Volume</th>
+                          </tr>
+                       </thead>
+                       <tbody className="divide-y divide-zinc-100">
+                          {ebooks.map(ebook => {
+                            const stats = orders.filter(o => o.ebook_id === ebook.id && o.status === 'success');
+                            const revenue = stats.reduce((acc, o) => acc + o.amount, 0);
+                            return (
+                              <tr key={ebook.id}>
+                                 <td className="px-6 py-4">
+                                    <div className="flex items-center gap-3">
+                                       <img src={ebook.cover_url} className="w-8 h-10 rounded object-cover" />
+                                       <span className="text-sm font-black text-zinc-900">{ebook.title}</span>
+                                    </div>
+                                 </td>
+                                 <td className="px-6 py-4 text-xs">
+                                    {ebook.is_deleted ? <Badge variant="secondary" className="text-red-500 bg-red-50">DELETED</Badge> : <Badge variant="secondary" className="text-green-500 bg-green-50">ACTIVE</Badge>}
+                                 </td>
+                                 <td className="px-6 py-4 text-right font-bold">{stats.length}</td>
+                                 <td className="px-6 py-4 text-right font-black">₹{revenue}</td>
+                              </tr>
+                            );
+                          })}
+                       </tbody>
+                    </table>
+                 </div>
+              </CardContent>
+           </Card>
+        </div>
+      )}
+
+      {activeTab === 'payouts' && (
+        <div className="space-y-8 animate-in slide-in-from-right-4 duration-500">
+           <Card className="border-zinc-200 shadow-xl ring-4 ring-blue-50">
+              <CardHeader className="bg-blue-600 text-white rounded-t-3xl border-b-4 border-blue-700">
+                <CardTitle className="text-2xl font-black">Verified Payout Queue</CardTitle>
+                <CardDescription className="text-blue-100">Process withdrawals for successful affiliates.</CardDescription>
+              </CardHeader>
+              <CardContent className="p-6 space-y-4">
+                  {withdrawals.filter(w => w.status === 'pending').map((w) => (
+                    <div key={w.id} className="p-6 bg-white rounded-3xl border-2 border-zinc-100 shadow-sm space-y-4">
+                        <div className="flex justify-between items-start">
+                          <div>
+                             <p className="text-4xl font-black text-zinc-900">₹{w.amount}</p>
+                             <div className="bg-blue-50 p-2 rounded-xl border border-blue-100 mt-2">
+                                <p className="text-sm font-black text-blue-700">{w.upi_id}</p>
+                             </div>
+                             {w.mobile_number && <p className="text-xs font-black text-zinc-400 mt-2">Mob: {w.mobile_number}</p>}
                           </div>
-                        )}
-                      </div>
+                          <div className="text-right">
+                            <p className="text-sm font-black text-zinc-900">{w.profiles?.display_name}</p>
+                            <p className="text-[10px] text-zinc-400 font-bold uppercase">{w.email_id || w.profiles?.email}</p>
+                            {w.purchase_utr && (
+                              <div className="mt-2 bg-orange-50 px-2 py-1 rounded border border-orange-100">
+                                <p className="text-[9px] font-black text-orange-600 uppercase">Verification UTR</p>
+                                <p className="text-[10px] font-bold text-orange-700">{w.purchase_utr}</p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <Button className="w-full bg-blue-600 hover:bg-blue-700 h-12 rounded-2xl font-black shadow-lg shadow-blue-600/20" onClick={() => handleApproveWithdrawal(w)}>DISBURSE PAYMENT</Button>
                     </div>
-                    <div className="text-right">
-                      <p className="text-[10px] text-zinc-400 font-medium">
-                        {new Date(order.created_at).toLocaleDateString()}
-                      </p>
-                      <p className="text-[10px] text-zinc-400 font-medium">
-                        {new Date(order.created_at).toLocaleTimeString()}
-                      </p>
+                  ))}
+                  {withdrawals.filter(w => w.status === 'pending').length === 0 && (
+                    <div className="py-20 text-center text-zinc-400 font-bold italic">All payouts completed.</div>
+                  )}
+              </CardContent>
+           </Card>
+        </div>
+      )}
+
+      {activeTab === 'products' && (
+        <div className="space-y-6">
+           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+              {ebooks.filter(e => !e.is_deleted).map(ebook => (
+                <Card key={ebook.id} className="border-zinc-200 overflow-hidden group">
+                   <div className="relative aspect-[3/4]">
+                      <img src={ebook.cover_url} className="w-full h-full object-cover" />
+                      <div className="absolute top-2 right-2 flex gap-1">
+                        <Button size="icon" variant="secondary" className="w-8 h-8 rounded-full" onClick={() => startEdit(ebook)}><Pencil className="w-3.5 h-3.5" /></Button>
+                        <Button size="icon" variant="destructive" className="w-8 h-8 rounded-full" onClick={() => { setDeletingId(ebook.id); setIsDeleting(true); }}><Trash2 className="w-3.5 h-3.5" /></Button>
+                      </div>
+                   </div>
+                   <CardContent className="p-4">
+                      <Badge variant="outline" className="text-[8px] mb-2">{ebook.category}</Badge>
+                      <h4 className="font-black text-sm text-zinc-900 line-clamp-1">{ebook.title}</h4>
+                      <p className="text-[10px] text-zinc-500 mb-4">Price: ₹{ebook.price}</p>
+                      <div className="flex gap-2">
+                        <Button 
+                          className={`flex-1 text-[9px] font-black h-8 rounded-lg ${ebook.is_verified ? 'bg-zinc-100 text-zinc-500' : 'bg-green-600 text-white'}`}
+                          onClick={() => handleVerifyEbook(ebook.id, !ebook.is_verified)}
+                        >
+                          {ebook.is_verified ? 'REVOKE VERIFICATION' : 'VERIFY PRODUCT'}
+                        </Button>
+                      </div>
+                   </CardContent>
+                </Card>
+              ))}
+           </div>
+           <Button className="fixed bottom-8 left-8 w-16 h-16 rounded-full bg-zinc-900 shadow-2xl hover:scale-110 active:scale-95 transition-all text-white p-0 z-50" onClick={() => setIsAdding(true)}>
+             <Plus className="w-8 h-8" />
+           </Button>
+        </div>
+      )}
+
+      {activeTab === 'sellers' && (
+        <div className="space-y-6">
+           <div className="flex gap-2">
+             <div className="relative flex-1">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
+                <Input 
+                  placeholder="Search user by name, email or ID..." 
+                  className="h-12 pl-12 rounded-2xl border-2 border-zinc-100 focus:border-zinc-900 font-bold"
+                  value={sellerSearch}
+                  onChange={(e) => setSellerSearch(e.target.value)}
+                />
+             </div>
+             <Button 
+               variant="outline" 
+               className="h-12 rounded-2xl border-2 border-zinc-100 font-black px-6 gap-2"
+               onClick={() => {
+                 fetchData();
+                 toast.success('Seller data refreshed');
+               }}
+             >
+               <History className="w-4 h-4" />
+               <span className="hidden sm:inline">REFRESH</span>
+             </Button>
+           </div>
+
+           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {sellers
+              .filter(s => s.role !== 'admin') // Remove admins from seller panel
+              .filter(s => 
+                s.display_name?.toLowerCase().includes(sellerSearch.toLowerCase()) || 
+                s.email?.toLowerCase().includes(sellerSearch.toLowerCase()) ||
+                s.uid?.includes(sellerSearch)
+              )
+              .map(seller => {
+                const sellerAffiliateSales = orders.filter(o => o.referrer_id === seller.uid && o.status === 'success');
+                const sellerWithdrawals = withdrawals.filter(w => w.user_id === seller.uid && (w.status === 'success' || w.status === 'pending'));
+                
+                const calculatedAffiliate = sellerAffiliateSales.reduce((acc, o) => acc + (o.commission_amount || o.ebook?.commission_amount || 0), 0);
+                const totalWithdrawn = sellerWithdrawals.reduce((acc, w) => acc + w.amount, 0);
+                const currentBalance = calculatedAffiliate - totalWithdrawn;
+
+                return (
+                  <Card key={seller.uid} className="border-zinc-200 shadow-sm hover:shadow-md transition-shadow">
+                    <CardHeader className="flex flex-row items-center gap-4 pb-2">
+                        <img src={seller.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${seller.uid}`} className="w-12 h-12 rounded-xl" />
+                        <div className="flex-1">
+                          <CardTitle className="text-sm font-black">{seller.display_name}</CardTitle>
+                          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-tighter">{seller.email}</p>
+                          <p className="text-[8px] text-zinc-300 font-mono mt-1">ID: ...{seller.uid.slice(-12)}</p>
+                        </div>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        <div className="bg-zinc-900 rounded-2xl p-4 text-white text-center shadow-inner">
+                          <p className="text-[8px] font-black text-zinc-400 uppercase tracking-widest mb-1">Affiliate Balance</p>
+                          <p className="text-3xl font-black italic">₹{currentBalance.toFixed(2)}</p>
+                        </div>
+
+                        <div className="flex gap-2">
+                          <div className="flex-1 p-3 bg-zinc-50 rounded-xl border border-zinc-100 text-center">
+                              <p className="text-[9px] font-black text-zinc-400 uppercase">Withdrawn</p>
+                              <p className="text-sm font-black text-zinc-900">₹{totalWithdrawn}</p>
+                          </div>
+                          <div className="flex-1 p-3 bg-zinc-50 rounded-xl border border-zinc-100 text-center">
+                              <p className="text-[9px] font-black text-zinc-400 uppercase">Referrals</p>
+                              <p className="text-sm font-black text-zinc-900">{sellerAffiliateSales.length}</p>
+                          </div>
+                        </div>
+                        
+                        <Button 
+                          className="w-full bg-zinc-100 hover:bg-zinc-200 text-zinc-900 text-[10px] font-black h-10 rounded-xl gap-2"
+                          onClick={() => setViewingUser(seller)}
+                        >
+                          <Search className="w-3 h-3" />
+                          VIEW USER DOSSIER
+                        </Button>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+          </div>
+        </div>
+      )}
+
+      {/* Detailed User Dossier View */}
+      <Dialog open={!!viewingUser} onOpenChange={() => setViewingUser(null)}>
+        <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto rounded-3xl p-0 border-none shadow-2xl">
+          <DialogHeader className="sr-only">
+            <DialogTitle>User Dossier - {viewingUser?.display_name}</DialogTitle>
+            <DialogDescription>Detailed purchase and referral history for this user.</DialogDescription>
+          </DialogHeader>
+          {viewingUser && (() => {
+            const userOrders = orders.filter(o => o.user_id === viewingUser.uid && o.status === 'success');
+            const userReferrals = orders.filter(o => o.referrer_id === viewingUser.uid && o.status === 'success');
+            const userWiths = withdrawals.filter(w => w.user_id === viewingUser.uid);
+            
+            const earned = userReferrals.reduce((acc, o) => acc + (o.commission_amount || o.ebook?.commission_amount || 0), 0);
+            const paid = userWiths.filter(w => w.status === 'success').reduce((acc, w) => acc + w.amount, 0);
+            const bal = earned - userWiths.reduce((acc, w) => acc + w.amount, 0);
+
+            return (
+              <div className="space-y-0">
+                <div className="bg-zinc-900 p-8 text-white">
+                  <div className="flex items-center gap-6">
+                    <img 
+                      src={viewingUser.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${viewingUser.uid}`} 
+                      className="w-20 h-20 rounded-2xl border-2 border-zinc-800"
+                    />
+                    <div>
+                      <h2 className="text-3xl font-black">{viewingUser.display_name}</h2>
+                      <p className="text-zinc-400 font-bold">{viewingUser.email}</p>
+                      <Badge className="bg-zinc-800 mt-2 font-mono text-[9px] uppercase">ID: {viewingUser.uid}</Badge>
                     </div>
                   </div>
                   
-                  <div className="flex gap-2 mt-auto">
-                    <Button 
-                      className="flex-1 bg-green-600 hover:bg-green-700 text-xs font-black h-9 rounded-xl"
-                      onClick={() => handleApproveOrder(order)}
-                    >
-                      APPROVE
-                    </Button>
-                    <Button 
-                      variant="outline"
-                      className="flex-1 border-red-100 text-red-600 hover:bg-red-50 text-xs font-black h-9 rounded-xl"
-                      onClick={() => handleRejectOrder(order.id)}
-                    >
-                      REJECT
-                    </Button>
-                  </div>
-                </div>
-              ))}
-              {orders.filter(o => o.status === 'pending').length === 0 && (
-                <div className="col-span-full text-center py-12 bg-zinc-50 rounded-2xl border-2 border-dashed border-zinc-200">
-                  <div className="flex flex-col items-center gap-2">
-                    <BadgeCheck className="w-8 h-8 text-zinc-300" />
-                    <p className="text-zinc-500 font-bold text-sm tracking-tight">Queue is empty. Everything verified!</p>
-                  </div>
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Recent Orders */}
-        <Card className="border-zinc-200 shadow-sm">
-          <CardHeader>
-            <CardTitle>Approved Sales</CardTitle>
-            <CardDescription>Track successfully verified transactions.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {orders.filter(o => o.status !== 'pending').map(order => (
-                <div key={order.id} className="flex items-center justify-between p-3 rounded-lg border border-zinc-100">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-mono text-zinc-400">#{order.id.slice(-6)}</span>
-                      <span className="text-sm font-bold">₹{order.amount}</span>
+                  <div className="grid grid-cols-3 gap-4 mt-8">
+                    <div className="bg-zinc-800/50 p-4 rounded-2xl border border-zinc-700">
+                      <p className="text-[8px] font-black text-zinc-500 uppercase tracking-widest mb-1">Total Earnings</p>
+                      <p className="text-xl font-black">₹{earned}</p>
                     </div>
-                    {order.transaction_id && (
-                      <p className="text-[9px] font-mono text-zinc-400 bg-zinc-50 px-1 inline-block">UTR: {order.transaction_id}</p>
-                    )}
-                    <p className="text-[10px] text-zinc-500">
-                      {new Date(order.created_at).toLocaleDateString()}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className={`px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest ${
-                      order.status === 'success' ? 'bg-green-100 text-green-700' : 'bg-zinc-100 text-zinc-500 line-through'
-                    }`}>
-                      {order.status}
+                    <div className="bg-zinc-800/50 p-4 rounded-2xl border border-zinc-700">
+                      <p className="text-[8px] font-black text-zinc-500 uppercase tracking-widest mb-1">Total Withdrawn</p>
+                      <p className="text-xl font-black">₹{paid}</p>
+                    </div>
+                    <div className="bg-zinc-900 border-2 border-green-500/30 p-4 rounded-2xl">
+                      <p className="text-[8px] font-black text-green-500 uppercase tracking-widest mb-1">Current Balance</p>
+                      <p className="text-xl font-black text-green-400">₹{bal.toFixed(2)}</p>
                     </div>
                   </div>
                 </div>
-              ))}
-              {orders.length === 0 && (
-                <div className="text-center py-10 text-zinc-500 text-sm">No sales processed yet.</div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
 
-        {/* Sellers Management */}
-        <Card className="border-zinc-200 shadow-sm">
-          <CardHeader>
-            <CardTitle>Manage Sellers</CardTitle>
-            <CardDescription>View and manage independent sellers.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {sellers.map((seller) => (
-                <div key={seller.uid} className="flex items-center justify-between p-3 rounded-lg border border-zinc-100">
-                  <div className="flex items-center gap-3">
-                    <img 
-                      src={seller.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${seller.uid}`} 
-                      alt="" 
-                      className="w-10 h-10 rounded-full border border-zinc-100" 
-                    />
-                    <div>
-                      <h4 className="font-bold text-sm">{seller.display_name}</h4>
-                      <p className="text-[10px] text-zinc-500">{seller.email}</p>
+                <div className="p-8 space-y-8 bg-white">
+                  {/* Purchase History */}
+                  <section>
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-sm font-black uppercase tracking-widest text-zinc-900 flex items-center gap-2">
+                        <Package className="w-4 h-4" /> Personal Purchase Inventory ({userOrders.length})
+                      </h3>
                     </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-black text-zinc-900">₹{(seller.earnings || 0) + (seller.affiliate_earnings || 0)}</p>
-                    <p className="text-[10px] text-zinc-400">Total (₹{seller.affiliate_earnings || 0} Ref)</p>
-                  </div>
-                </div>
-              ))}
-              {sellers.length === 0 && (
-                <div className="text-center py-10 text-zinc-500 text-sm">No independent sellers yet.</div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Ebooks List */}
-        <Card className="border-zinc-200 shadow-sm col-span-full">
-          <CardHeader>
-            <CardTitle>Manage Ebooks Catalog</CardTitle>
-            <CardDescription>View and manage all ebooks listed on the platform.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {ebooks.map(ebook => (
-                <div key={ebook.id} className="flex items-center justify-between p-3 rounded-lg border border-zinc-100 hover:bg-zinc-50 transition-colors">
-                  <div className="flex items-center gap-3">
-                    <img src={ebook.cover_url || undefined} alt="" className="w-10 h-14 object-cover rounded shadow-sm" />
-                    <div>
-                      <h4 className="font-bold text-sm line-clamp-1">{ebook.title}</h4>
-                      <p className="text-[10px] text-zinc-500">₹{ebook.price} • {ebook.category}</p>
-                      {ebook.seller_id && <BadgeCheck className="w-3 h-3 text-blue-600 inline ml-1" />}
+                    <div className="space-y-2">
+                      {userOrders.length > 0 ? userOrders.map(order => (
+                        <div key={order.id} className="p-4 bg-zinc-50 rounded-2xl border border-zinc-100 flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <img src={order.ebook?.cover_url} className="w-8 h-10 rounded shadow-sm" />
+                            <div>
+                              <p className="text-xs font-black text-zinc-900">{order.ebook?.title}</p>
+                              <p className="text-[9px] font-bold text-zinc-400 uppercase">{new Date(order.created_at).toLocaleDateString()} • {order.transaction_id || 'Direct'}</p>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-xs font-black text-zinc-900">₹{order.amount}</p>
+                            <Badge className="bg-zinc-200 text-zinc-600 text-[8px] h-4">VERIFIED</Badge>
+                          </div>
+                        </div>
+                      )) : (
+                        <div className="py-8 text-center bg-zinc-50 rounded-2xl border-2 border-dashed border-zinc-100 text-zinc-400 text-xs font-bold italic">
+                          No product purchases recorded.
+                        </div>
+                      )}
                     </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button 
-                      variant="ghost" 
-                      size="icon" 
-                      className="h-8 w-8 text-zinc-400 hover:text-zinc-900"
-                      onClick={() => startEdit(ebook)}
-                    >
-                      <Pencil className="w-4 h-4" />
-                    </Button>
-                    <Button 
-                      variant="ghost" 
-                      size="icon" 
-                      className="h-8 w-8 text-zinc-400 hover:text-red-600"
-                      onClick={() => confirmDelete(ebook.id)}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+                  </section>
 
-      {/* Withdrawal Management */}
-      <Card className="border-zinc-200 shadow-sm">
-        <CardHeader className="flex flex-row items-center justify-between">
-          <div>
-            <CardTitle className="text-xl font-black text-blue-600">Withdrawal Requests</CardTitle>
-            <CardDescription>Payout requests from affiliates.</CardDescription>
-          </div>
-          <Badge className="bg-blue-600">
-            {withdrawals.filter(w => w.status === 'pending').length} PENDING
-          </Badge>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {withdrawals.filter(w => w.status === 'pending').map((w) => (
-              <div key={w.id} className="p-4 bg-white rounded-2xl border border-zinc-200 shadow-sm space-y-4">
-                <div className="flex justify-between items-start">
-                  <div className="space-y-1">
-                    <p className="text-lg font-black text-zinc-900">₹{w.amount}</p>
-                    <p className="text-[10px] font-bold text-blue-600 uppercase tracking-widest">{w.upi_id}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-[10px] text-zinc-500 font-bold">{w.profiles?.display_name}</p>
-                    <p className="text-[9px] text-zinc-400">{w.profiles?.email}</p>
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <Button 
-                    className="flex-1 bg-zinc-900 hover:bg-black font-black text-xs h-9 rounded-xl"
-                    onClick={() => handleApproveWithdrawal(w)}
-                  >
-                    MARK AS PAID
-                  </Button>
+                  {/* Referral History */}
+                  <section>
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-sm font-black uppercase tracking-widest text-zinc-900 flex items-center gap-2">
+                        <Users className="w-4 h-4" /> Affiliate Network Leads ({userReferrals.length})
+                      </h3>
+                    </div>
+                    <div className="overflow-x-auto rounded-2xl border border-zinc-100">
+                      <table className="w-full text-left">
+                        <thead className="bg-zinc-50">
+                          <tr>
+                            <th className="px-4 py-3 text-[10px] font-black uppercase text-zinc-400">Buyer Name</th>
+                            <th className="px-4 py-3 text-[10px] font-black uppercase text-zinc-400">Transaction ID</th>
+                            <th className="px-4 py-3 text-[10px] font-black uppercase text-zinc-400">Product</th>
+                            <th className="px-4 py-3 text-[10px] font-black uppercase text-zinc-400 text-right">Reward</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-zinc-100">
+                          {userReferrals.length > 0 ? userReferrals.map(ref => (
+                            <tr key={ref.id} className="hover:bg-zinc-50 transition-colors">
+                              <td className="px-4 py-3">
+                                <div>
+                                  <p className="text-xs font-black text-zinc-900">{ref.profiles?.display_name || 'Quick Buyer'}</p>
+                                  <p className="text-[8px] font-mono text-zinc-400">UID: {ref.user_id?.slice(-8)}</p>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3">
+                                <p className="text-[9px] font-black text-zinc-500 font-mono">{ref.transaction_id || 'SYSTEM'}</p>
+                              </td>
+                              <td className="px-4 py-3">
+                                <p className="text-[9px] font-bold text-zinc-600 line-clamp-1">{ref.ebook?.title}</p>
+                              </td>
+                              <td className="px-4 py-3 text-right">
+                                <p className="text-xs font-black text-green-600">+₹{ref.commission_amount || ref.ebook?.commission_amount || 0}</p>
+                              </td>
+                            </tr>
+                          )) : (
+                            <tr>
+                              <td colSpan={4} className="px-4 py-12 text-center text-zinc-400 text-xs font-bold italic">
+                                No affiliate sales generated yet.
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </section>
                 </div>
               </div>
-            ))}
-            {withdrawals.filter(w => w.status === 'pending').length === 0 && (
-              <div className="col-span-full text-center py-12 bg-zinc-50 rounded-2xl border-2 border-dashed border-zinc-200">
-                <p className="text-zinc-500 font-bold text-sm italic">No pending withdrawal requests.</p>
-              </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isAdding} onOpenChange={setIsAdding}>
+        <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto rounded-3xl">
+          <DialogHeader><DialogTitle className="text-2xl font-black">Create Product</DialogTitle></DialogHeader>
+          <form onSubmit={handleAddEbook} className="space-y-4 pt-4">
+             <div className="space-y-1">
+                <Label className="text-[10px] font-black uppercase text-zinc-400">Title</Label>
+                <Input value={newEbook.title} onChange={e => setNewEbook({...newEbook, title: e.target.value})} required className="h-12 rounded-xl" />
+             </div>
+             <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <Label className="text-[10px] font-black uppercase text-zinc-400">Price</Label>
+                  <Input type="number" value={newEbook.price} onChange={e => setNewEbook({...newEbook, price: Number(e.target.value)})} required className="h-12 rounded-xl" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[10px] font-black uppercase text-zinc-400">Commission</Label>
+                  <Input type="number" value={newEbook.commission_amount} onChange={e => setNewEbook({...newEbook, commission_amount: Number(e.target.value)})} required className="h-12 rounded-xl" />
+                </div>
+             </div>
+             <div className="space-y-1">
+                <Label className="text-[10px] font-black uppercase text-zinc-400">Author</Label>
+                <Input value={newEbook.author} onChange={e => setNewEbook({...newEbook, author: e.target.value})} required className="h-12 rounded-xl" />
+             </div>
+             <div className="space-y-1">
+                <Label className="text-[10px] font-black uppercase text-zinc-400">Description</Label>
+                <Textarea value={newEbook.description} onChange={e => setNewEbook({...newEbook, description: e.target.value})} required className="rounded-xl h-24" />
+             </div>
+             <div className="space-y-4">
+                <div className="p-4 border-2 border-dashed border-zinc-200 rounded-2xl text-center">
+                   <Label className="text-[10px] font-black mb-2 block uppercase text-zinc-400">Cover & Asset Selection</Label>
+                   <div className="flex gap-2 justify-center">
+                      <Button type="button" variant="outline" className="h-10 rounded-xl relative overflow-hidden">
+                        Cover Image
+                        <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" accept="image/*" onChange={(e) => e.target.files && handleFileUpload(e.target.files[0], 'cover')} />
+                      </Button>
+                      <Button type="button" variant="outline" className="h-10 rounded-xl relative overflow-hidden">
+                        PDF File
+                        <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" accept="application/pdf" onChange={(e) => e.target.files && handleFileUpload(e.target.files[0], 'ebook')} />
+                      </Button>
+                   </div>
+                   {(newEbook.cover_url || newEbook.file_url) && <p className="text-[10px] font-bold text-green-600 mt-2">Files Selected ✓</p>}
+                </div>
+             </div>
+             <Button type="submit" className="w-full bg-zinc-900 text-white hover:bg-black font-black h-12 rounded-2xl" disabled={isUploading}>
+                {isUploading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : 'PUBLISH NOW'}
+             </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isEditing} onOpenChange={setIsEditing}>
+        <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto rounded-3xl">
+          <DialogHeader><DialogTitle className="text-xl font-black">Edit Asset Configuration</DialogTitle></DialogHeader>
+          <form onSubmit={handleEditEbook} className="space-y-4 pt-4">
+             <div className="space-y-1">
+                <Label className="text-[10px] font-black uppercase text-zinc-400">Asset Title</Label>
+                <Input value={editFormData.title} onChange={e => setEditFormData({...editFormData, title: e.target.value})} className="h-12 rounded-xl" />
+             </div>
+             <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <Label className="text-[10px] font-black uppercase text-zinc-400">Price (INR)</Label>
+                  <Input type="number" value={editFormData.price} onChange={e => setEditFormData({...editFormData, price: Number(e.target.value)})} className="h-12 rounded-xl" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[10px] font-black uppercase text-zinc-400">Reward (INR)</Label>
+                  <Input type="number" value={editFormData.commission_amount} onChange={e => setEditFormData({...editFormData, commission_amount: Number(e.target.value)})} className="h-12 rounded-xl" />
+                </div>
+             </div>
+             <Button type="submit" className="w-full bg-orange-600 text-white hover:bg-orange-700 font-black h-12 rounded-2xl">SYCHRONIZE CHANGES</Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isDeleting} onOpenChange={setIsDeleting}>
+        <DialogContent className="sm:max-w-[400px] rounded-3xl">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-black">Soft Product Deletion</DialogTitle>
+            <DialogDescription className="font-bold text-zinc-600 py-3">This moves the asset to an optimized archive. New sales cease, analytics persist.</DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-3"><Button variant="ghost" className="font-black" onClick={() => setIsDeleting(false)}>ABORT</Button><Button variant="destructive" className="bg-red-600 font-black rounded-xl px-6" onClick={handleSoftDeleteEbook}>CONFIRM REMOVAL</Button></div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
