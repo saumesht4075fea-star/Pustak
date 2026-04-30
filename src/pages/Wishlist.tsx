@@ -23,19 +23,34 @@ export default function Wishlist({ user }: { user: User | null }) {
       const { data, error } = await supabase
         .from('wishlist')
         .select(`
-          *,
+          id,
+          user_id,
+          ebook_id,
+          created_at,
           ebook:ebooks (*)
         `)
         .eq('user_id', user.id);
-      
-      if (data) setItems(data as WishlistItem[]);
+
+      if (error) {
+        toast.error('Failed to fetch wishlist');
+        setLoading(false);
+        return;
+      }
+
+      if (data) {
+        const enrichedItems = data.map(item => ({
+          ...item,
+          ebook: Array.isArray(item.ebook) ? item.ebook[0] : item.ebook
+        }));
+        setItems(enrichedItems as WishlistItem[]);
+      }
       setLoading(false);
     };
 
     fetchWishlist();
 
     const channel = supabase
-      .channel('wishlist_page')
+      .channel('wishlist_user')
       .on('postgres_changes', { 
         event: '*', 
         schema: 'public', 
@@ -94,7 +109,7 @@ export default function Wishlist({ user }: { user: User | null }) {
             <Card className="border-zinc-200 overflow-hidden hover:shadow-md transition-shadow">
               <CardContent className="p-4 flex items-center justify-between">
                 <div className="flex items-center gap-4">
-                  <img src={item.ebook?.cover_url} alt="" className="w-16 h-24 object-cover rounded shadow-sm" />
+                  <img src={item.ebook?.cover_url || undefined} alt="" className="w-16 h-24 object-cover rounded shadow-sm" />
                   <div>
                     <h3 className="font-bold text-lg tracking-tight">{item.ebook?.title}</h3>
                     <p className="text-sm text-zinc-500">by {item.ebook?.author}</p>

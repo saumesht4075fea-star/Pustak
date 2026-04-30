@@ -2,14 +2,17 @@ import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { supabase, isSupabaseConfigured } from './lib/supabase';
-import { Session, User } from '@supabase/supabase-js';
+import { User } from '@supabase/supabase-js';
 import SplashScreen from './components/SplashScreen';
 import Home from './pages/Home';
 import Admin from './pages/Admin';
 import Wishlist from './pages/Wishlist';
 import Orders from './pages/Orders';
 import ProductDetail from './pages/ProductDetail';
-import { BookOpen, Heart, ShoppingBag, User as UserIcon, Instagram, LogIn, LogOut, ShieldCheck, AlertTriangle } from 'lucide-react';
+import SellerDashboard from './pages/SellerDashboard';
+import ProfilePage from './pages/Profile';
+import GlobalChat from './components/GlobalChat';
+import { BookOpen, Heart, ShoppingBag, User as UserIcon, Instagram, LogIn, LogOut, ShieldCheck, AlertTriangle, LayoutDashboard, UserCircle, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Toaster } from '@/components/ui/sonner';
 import { toast } from 'sonner';
@@ -17,6 +20,28 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+
+async function syncUser(user: User, displayName?: string) {
+  try {
+    const adminEmails = ['saumesht4075fea@gmail.com', 'mohittttt868@gmail.com'];
+    const role = adminEmails.includes(user.email || '') ? 'admin' : 'customer';
+    
+    const { error } = await supabase.from('profiles').upsert({
+      uid: user.id,
+      email: user.email,
+      display_name: displayName || user.user_metadata?.display_name || user.email?.split('@')[0],
+      role: role,
+      created_at: new Date().toISOString()
+    }, { 
+      onConflict: 'uid',
+      ignoreDuplicates: true 
+    });
+
+    if (error) console.error('Error syncing profile:', error);
+  } catch (err) {
+    console.error('Unexpected error in syncUser:', err);
+  }
+}
 
 function ConfigWarning() {
   if (isSupabaseConfigured) return null;
@@ -28,7 +53,7 @@ function ConfigWarning() {
   );
 }
 
-function Navbar({ user, isAdmin }: { user: User | null; isAdmin: boolean }) {
+function Navbar({ user, isAdmin, isSeller, hasOrders }: { user: User | null; isAdmin: boolean; isSeller: boolean; hasOrders: boolean }) {
   const [isLoginOpen, setIsLoginOpen] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -39,7 +64,10 @@ function Navbar({ user, isAdmin }: { user: User | null; isAdmin: boolean }) {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: window.location.origin
+          redirectTo: window.location.origin,
+          queryParams: {
+            prompt: 'select_account'
+          }
         }
       });
       if (error) throw error;
@@ -58,18 +86,13 @@ function Navbar({ user, isAdmin }: { user: User | null; isAdmin: boolean }) {
         options: {
           data: {
             display_name: name,
-            photo_url: `https://api.dicebear.com/7.x/avataaars/svg?seed=${email}`
           }
         }
       });
       if (error) throw error;
-      
-      if (data.session) {
-        if (data.user) await syncUser(data.user);
-        toast.success('Account created and logged in!');
-        setIsLoginOpen(false);
-      } else {
-        toast.success('Signup successful! Please check your email for a confirmation link.');
+      if (data.user) {
+        await syncUser(data.user, name);
+        toast.success('Registration successful! Please check your email for confirmation.');
       }
     } catch (error: any) {
       console.error('Signup Error:', error);
@@ -89,50 +112,7 @@ function Navbar({ user, isAdmin }: { user: User | null; isAdmin: boolean }) {
       toast.success('Welcome back!');
     } catch (error: any) {
       console.error('Login Error:', error);
-      if (error.message === 'Email not confirmed') {
-        toast.error('Email not confirmed. Please check your inbox.', {
-          action: {
-            label: 'Resend Email',
-            onClick: async () => {
-              const { error: resendError } = await supabase.auth.resend({
-                type: 'signup',
-                email: email,
-              });
-              if (resendError) toast.error(resendError.message);
-              else toast.success('Confirmation email resent!');
-            }
-          }
-        });
-      } else if (error.message === 'Failed to fetch') {
-        toast.error('Connection failed. Please check if your Supabase URL in Secrets is correct and includes https://');
-      } else {
-        toast.error(error.message || 'Login failed. Check your Supabase URL in Secrets.');
-      }
-    }
-  };
-
-  const syncUser = async (user: User) => {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('uid', user.id)
-      .single();
-
-    if (!profile) {
-      const role = user.email === 'saumesht4075fea@gmail.com' ? 'admin' : 'customer';
-      const { error: insertError } = await supabase.from('profiles').insert({
-        uid: user.id,
-        email: user.email,
-        display_name: user.user_metadata.display_name || user.email?.split('@')[0],
-        photo_url: user.user_metadata.photo_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.id}`,
-        role: role,
-        created_at: new Date().toISOString(),
-      });
-      
-      if (insertError) {
-        console.error('RLS Error (Profiles):', insertError);
-        toast.error('Database permission error. Please run the SQL script in Supabase.');
-      }
+      toast.error(error.message || 'Login failed');
     }
   };
 
@@ -162,6 +142,14 @@ function Navbar({ user, isAdmin }: { user: User | null; isAdmin: boolean }) {
             </Button>
           </Link>
           
+          {(isAdmin || isSeller || hasOrders) && user && (
+            <Link to="/dashboard">
+              <Button variant="ghost" size="icon" className="text-blue-600">
+                <LayoutDashboard className="w-5 h-5" />
+              </Button>
+            </Link>
+          )}
+
           {isAdmin && (
             <Link to="/admin">
               <Button variant="ghost" size="icon" className="text-orange-600">
@@ -174,10 +162,26 @@ function Navbar({ user, isAdmin }: { user: User | null; isAdmin: boolean }) {
 
           {user ? (
             <div className="flex items-center gap-2">
-              <img src={user.user_metadata.photo_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.id}`} alt="" className="w-8 h-8 rounded-full border border-zinc-200" />
+              <Link to="/profile" className="flex items-center gap-2 group p-1 pr-3 bg-zinc-50 hover:bg-orange-50 rounded-full border border-zinc-200 hover:border-orange-200 transition-all">
+                <img src={user.user_metadata?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.id}`} alt="" className="w-8 h-8 rounded-full border border-white shadow-sm" />
+                <div className="hidden sm:flex flex-col items-start leading-tight">
+                  <p className="text-[10px] font-black text-zinc-900 group-hover:text-orange-600 transition-colors uppercase italic truncate max-w-[80px]">
+                    {user.user_metadata?.display_name || user.email?.split('@')[0]}
+                  </p>
+                  <p className="text-[8px] font-bold text-zinc-400 group-hover:text-orange-400">EDIT PROFILE</p>
+                </div>
+              </Link>
+              <div className="h-6 w-[1px] bg-zinc-200 mx-2" />
+              <a href="/api/download-source" download>
+                <Button variant="ghost" size="sm" className="flex gap-2 text-zinc-600 hover:text-blue-600">
+                  <Download className="w-4 h-4" />
+                  <span className="hidden lg:inline text-xs font-bold uppercase">Download Code</span>
+                </Button>
+              </a>
+              <div className="h-6 w-[1px] bg-zinc-200 mx-2" />
               <Button variant="ghost" size="sm" onClick={handleLogout} className="flex gap-2">
-                <LogOut className="w-4 h-4" />
-                <span className="hidden sm:inline">Logout</span>
+                <LogOut className="w-4 h-4 text-zinc-400" />
+                <span className="hidden lg:inline text-xs font-bold uppercase">Logout</span>
               </Button>
             </div>
           ) : (
@@ -269,59 +273,78 @@ export default function App() {
   const [showSplash, setShowSplash] = useState(true);
   const [user, setUser] = useState<User | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isSeller, setIsSeller] = useState(false);
+  const [hasOrders, setHasOrders] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Check active sessions and subscribe to auth changes
-    supabase.auth.getSession().then(({ data: { session }, error }) => {
-      if (error) {
-        console.error('Auth session error:', error);
-        if (error.message === 'Failed to fetch') {
-          toast.error('Connection to Supabase failed. Please check your internet or Supabase URL in Secrets.');
-        }
-      }
+    // Global referral tracking
+    const params = new URLSearchParams(window.location.search);
+    const ref = params.get('ref');
+    if (ref && user && ref !== user.id) {
+      localStorage.setItem('global_session_referrer', ref);
+      // Optional: Clean URL
+      const newUrl = window.location.pathname + window.location.hash;
+      window.history.replaceState({}, '', newUrl);
+    } else if (ref && !user) {
+      localStorage.setItem('global_session_referrer', ref);
+    }
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
-      checkAdmin(session?.user ?? null);
-      setLoading(false);
-    }).catch(err => {
-      console.error('Auth session catch:', err);
-      if (err.message === 'Failed to fetch') {
-        toast.error('Connection to Supabase failed. Please check your internet or Supabase URL in Secrets.');
+      if (session?.user) {
+        checkRole(session.user);
+        checkOrders(session.user);
       }
       setLoading(false);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-      checkAdmin(session?.user ?? null);
+      const currentUser = session?.user ?? null;
+      setUser(currentUser);
+      if (currentUser) {
+        checkRole(currentUser);
+        syncUser(currentUser);
+        checkOrders(currentUser);
+      } else {
+        setIsAdmin(false);
+        setIsSeller(false);
+        setHasOrders(false);
+      }
+      setLoading(false);
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
-  const checkAdmin = async (user: User | null) => {
-    if (user) {
-      // Immediate check for the owner email
-      if (user.email === 'saumesht4075fea@gmail.com') {
-        setIsAdmin(true);
-        return;
-      }
-      
-      try {
-        const { data, error } = await supabase
-          .from('profiles')
-          .select('role')
-          .eq('uid', user.id)
-          .single();
-        
-        if (error) throw error;
-        setIsAdmin(data?.role === 'admin');
-      } catch (err) {
-        console.error('Admin check failed:', err);
-        setIsAdmin(false);
-      }
-    } else {
-      setIsAdmin(false);
+  const checkOrders = async (user: User) => {
+    const { data } = await supabase
+      .from('orders')
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('status', 'success')
+      .limit(1);
+    
+    setHasOrders(!!data && data.length > 0);
+  };
+
+  const checkRole = async (user: User) => {
+    const adminEmails = ['saumesht4075fea@gmail.com', 'mohittttt868@gmail.com'];
+    if (adminEmails.includes(user.email || '')) {
+      setIsAdmin(true);
+      setIsSeller(true);
+      return;
+    }
+
+    const { data } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('uid', user.id)
+      .single();
+
+    if (data) {
+      setIsAdmin(data.role === 'admin');
+      setIsSeller(data.role === 'seller' || data.role === 'admin');
     }
   };
 
@@ -332,18 +355,21 @@ export default function App() {
   return (
     <Router>
       <div className="min-h-screen bg-zinc-50 font-sans text-zinc-950">
-        <Navbar user={user} isAdmin={isAdmin} />
+        <Navbar user={user} isAdmin={isAdmin} isSeller={isSeller} hasOrders={hasOrders} />
         <main className="container mx-auto px-4 py-8">
           <AnimatePresence mode="wait">
             <Routes>
               <Route path="/" element={<Home user={user} />} />
               <Route path="/admin" element={isAdmin ? <Admin /> : <Home user={user} />} />
+              <Route path="/dashboard" element={user ? <SellerDashboard user={user} isAdmin={isAdmin} isSeller={isSeller} /> : <Home user={user} />} />
               <Route path="/wishlist" element={<Wishlist user={user} />} />
               <Route path="/orders" element={<Orders user={user} />} />
-              <Route path="/ebook/:id" element={<ProductDetail user={user} />} />
+              <Route path="/ebook/:id" element={<ProductDetail user={user} isAdmin={isAdmin} isSeller={isSeller} />} />
+              <Route path="/profile" element={<ProfilePage user={user} />} />
             </Routes>
           </AnimatePresence>
         </main>
+        <GlobalChat user={user} />
         <Toaster position="top-center" />
       </div>
     </Router>

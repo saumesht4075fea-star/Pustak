@@ -24,39 +24,36 @@ async function startServer() {
     res.json({ status: "ok" });
   });
 
-  // PayU Hash Generation
-  app.post("/api/payu/hash", (req, res) => {
-    const { txnid, amount, productinfo, firstname, email } = req.body;
-    const key = process.env.PAYU_MERCHANT_KEY || "placeholder_key";
-    const salt = process.env.PAYU_MERCHANT_SALT || "placeholder_salt";
+  app.get("/api/download-source", async (req, res) => {
+    try {
+      const archiver = (await import("archiver")).default;
+      const archive = archiver("zip", { zlib: { level: 9 } });
 
-    // Hash Formula: sha512(key|txnid|amount|productinfo|firstname|email|udf1|udf2|udf3|udf4|udf5||||||salt)
-    const hashString = `${key}|${txnid}|${amount}|${productinfo}|${firstname}|${email}|||||||||||${salt}`;
-    const hash = crypto.createHash("sha512").update(hashString).digest("hex");
+      res.attachment("source-code.zip");
 
-    res.json({ hash });
-  });
+      archive.on("error", (err) => {
+        throw err;
+      });
 
-  // PayU Success/Failure Webhooks
-  app.post("/api/payu/response", (req, res) => {
-    const { status, txnid, amount, productinfo, firstname, email, hash } = req.body;
-    const key = process.env.PAYU_MERCHANT_KEY || "placeholder_key";
-    const salt = process.env.PAYU_MERCHANT_SALT || "placeholder_salt";
+      archive.pipe(res);
 
-    // Reverse Hash Formula: sha512(salt|status||||||udf5|udf4|udf3|udf2|udf1|email|firstname|productinfo|amount|txnid|key)
-    const reverseHashString = `${salt}|${status}|||||||||||${email}|${firstname}|${productinfo}|${amount}|${txnid}|${key}`;
-    const generatedHash = crypto.createHash("sha512").update(reverseHashString).digest("hex");
+      // Exclude node_modules, dist, .git, and other irrelevant files
+      archive.glob("**/*", {
+        cwd: process.cwd(),
+        ignore: [
+          "node_modules/**",
+          "dist/**",
+          ".git/**",
+          "source-code.zip",
+          "package-lock.json",
+          ".env"
+        ]
+      });
 
-    if (generatedHash === hash) {
-      // Payment is verified
-      if (status === "success") {
-        // Redirect to success page or handle order completion
-        res.redirect(`/orders?status=success&txnid=${txnid}`);
-      } else {
-        res.redirect(`/orders?status=failed&txnid=${txnid}`);
-      }
-    } else {
-      res.status(400).send("Hash Mismatch");
+      await archive.finalize();
+    } catch (error) {
+      console.error("Download failed:", error);
+      res.status(500).send("Failed to generate source zip");
     }
   });
 
