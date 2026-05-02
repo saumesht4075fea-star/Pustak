@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { User } from '@supabase/supabase-js';
 import { motion } from 'motion/react';
-import { Heart, ShoppingCart, Star, Search, Filter, MessageSquare } from 'lucide-react';
+import { Heart, ShoppingCart, Star, Search, Filter, MessageSquare, Download, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -11,11 +11,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { toast } from 'sonner';
 import { Ebook, Review, Profile } from '../types';
 import { Link, useNavigate } from 'react-router-dom';
+import { AnimatePresence } from 'motion/react';
 
 export default function Home({ user }: { user: User | null }) {
   const [ebooks, setEbooks] = useState<Ebook[]>([]);
+  const [banners, setBanners] = useState<any[]>([]);
+  const [currentBannerIndex, setCurrentBannerIndex] = useState(0);
   const [search, setSearch] = useState('');
-  const [referralInput, setReferralInput] = useState('');
   const [category, setCategory] = useState('All');
   const [wishlist, setWishlist] = useState<string[]>([]);
   const [reviews, setReviews] = useState<Record<string, Review[]>>({});
@@ -78,6 +80,15 @@ export default function Home({ user }: { user: User | null }) {
 
     fetchEbooks();
     fetchReviews();
+
+    const fetchBanners = async () => {
+      const { data } = await supabase
+        .from('home_banners')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (data && data.length > 0) setBanners(data);
+    };
+    fetchBanners();
 
     const ebooksChannel = supabase
       .channel('ebooks_home')
@@ -171,119 +182,6 @@ export default function Home({ user }: { user: User | null }) {
     }
   };
 
-  const [activeReferrer, setActiveReferrer] = useState<Profile | null>(null);
-
-  const handleReferralSearch = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!referralInput.trim()) return;
-
-    const input = referralInput.trim();
-    // More relaxed UUID regex to handle all variants
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-    try {
-      // 1. Check if it's a full URL (legacy support or accidental paste)
-      if (input.includes('/ebook/')) {
-        const urlString = input.startsWith('http') ? input : `https://${input}`;
-        const url = new URL(urlString);
-        const pathParts = url.pathname.split('/');
-        const ebookIdIndex = pathParts.indexOf('ebook');
-        const ebookId = ebookIdIndex !== -1 ? pathParts[ebookIdIndex + 1] : null;
-        const refId = url.searchParams.get('ref');
-        
-        if (ebookId) {
-          if (refId) localStorage.setItem(`ref_${ebookId}`, refId);
-          navigate(`/ebook/${ebookId}`);
-          return;
-        }
-      }
-
-      // 2. Check if it's a REF- style code
-      if (input.startsWith('REF-')) {
-        const { data: orderData } = await supabase
-          .from('orders')
-          .select('user_id, ebook_id')
-          .eq('referral_code', input)
-          .limit(1);
-
-        if (orderData && orderData.length > 0) {
-          localStorage.setItem('global_session_referrer', orderData[0].user_id);
-          
-          // Track the referral application
-          supabase.from('referral_tracking').insert({
-            referrer_id: orderData[0].user_id,
-            created_at: new Date().toISOString()
-          }).then();
-
-          toast.success('Referral Code Activated!');
-          // If it's specific to an ebook, navigate there
-          navigate(`/ebook/${orderData[0].ebook_id}?ref=${input}`);
-          return;
-        }
-      }
-
-      // 3. Check if it matches a profile display name (slugified)
-      const { data: profiles } = await supabase
-        .from('profiles')
-        .select('*');
-      
-      const match = profiles?.find(p => 
-        p.display_name?.replace(/\s+/g, '').toLowerCase() === input.toLowerCase()
-      );
-
-      if (match) {
-        localStorage.setItem('global_session_referrer', match.uid);
-        setActiveReferrer(match as Profile);
-        
-        // Track the referral application
-        supabase.from('referral_tracking').insert({
-          referrer_id: match.uid,
-          created_at: new Date().toISOString()
-        }).then();
-
-        toast.success(`Referral Activated! You are now supporting ${match.display_name}.`);
-        setReferralInput('');
-        return;
-      }
-
-      // 4. Check if it's a valid UUID
-      if (uuidRegex.test(input)) {
-        // First check if it's an eBook ID directly
-        const existingEbook = ebooks.find(eb => eb.id === input);
-        if (existingEbook) {
-          navigate(`/ebook/${existingEbook.id}`);
-          return;
-        }
-
-        // If not an ebook, check if it's a Profile UID
-        const { data: prof, error } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('uid', input)
-          .single();
-
-        if (prof && !error) {
-          localStorage.setItem('global_session_referrer', prof.uid);
-          setActiveReferrer(prof as Profile);
-          
-          // Track the referral application
-          supabase.from('referral_tracking').insert({
-            referrer_id: prof.uid,
-            created_at: new Date().toISOString()
-          }).then();
-
-          toast.success(`Referral Activated! You are now supporting ${prof.display_name}.`);
-          setReferralInput('');
-          return;
-        }
-      }
-      
-      toast.error('Invalid referral code, username or ID');
-    } catch (err: any) {
-      toast.error(err.message || 'Error occurred');
-    }
-  };
-
   const filteredEbooks = ebooks.filter(e => {
     const matchesCategory = (category === 'All' || e.category === category);
     const searchTerm = search.toLowerCase();
@@ -297,102 +195,115 @@ export default function Home({ user }: { user: User | null }) {
     return matchesCategory && matchesSearch;
   });
 
+  useEffect(() => {
+    if (banners.length <= 1) return;
+    
+    // Auto-slide only on mobile as requested
+    const isMobile = window.innerWidth < 768;
+    if (!isMobile) return;
+
+    const interval = setInterval(() => {
+      setCurrentBannerIndex((prev) => (prev + 1) % banners.length);
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [banners]);
+
   const categories = ['All', ...Array.from(new Set(ebooks.map(e => e.category)))];
+
+  const nextBanner = () => {
+    setCurrentBannerIndex((prev) => (prev + 1) % banners.length);
+  };
+
+  const prevBanner = () => {
+    setCurrentBannerIndex((prev) => (prev - 1 + banners.length) % banners.length);
+  };
 
   return (
     <div className="space-y-8">
       {/* Hero Section */}
-      <section className="relative h-[400px] rounded-3xl overflow-hidden bg-zinc-900 flex items-center px-8 sm:px-16">
-        <div className="absolute inset-0 opacity-40">
-          <img 
-            src="https://images.unsplash.com/photo-1524995997946-a1c2e315a42f?auto=format&fit=crop&w=1920&q=80" 
-            alt="Library" 
-            className="w-full h-full object-cover"
-            referrerPolicy="no-referrer"
-          />
-        </div>
-        <div className="relative z-10 max-w-2xl space-y-6">
-          <Badge className="bg-orange-600 hover:bg-orange-600 text-white border-none px-4 py-1">New Arrivals</Badge>
-          <h1 className="text-5xl sm:text-7xl font-bold text-white tracking-tighter leading-none">
-            Discover Your Next <span className="text-orange-500">Great Read.</span>
-          </h1>
-          <p className="text-zinc-300 text-lg max-w-lg">
-            Access thousands of premium ebooks from Indian and international authors. 
-            Instant delivery, lifetime access.
-          </p>
-
-          <div className="hidden md:block bg-white/5 border border-white/10 p-4 rounded-2xl backdrop-blur-sm">
-            <p className="text-[10px] text-zinc-400 font-black uppercase tracking-[0.2em] mb-2">🔥 Trending now</p>
-            <div className="flex gap-3 overflow-x-auto pb-1 text-xs font-bold text-white whitespace-nowrap">
-              <span>#SelfImprovement</span>
-              <span>#Business</span>
-              <span>#Fiction</span>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Referral Code Bar */}
-      <section className="bg-orange-50 border border-orange-100 rounded-[2rem] p-6 shadow-sm">
-        <div className="flex flex-col md:flex-row items-center justify-between gap-6">
-          <div className="space-y-1 text-center md:text-left">
-            <h3 className="text-xl font-black italic uppercase text-orange-900 tracking-tight flex items-center gap-2">
-              <Star className="w-5 h-5 fill-orange-500 text-orange-500" />
-              Have a Referral Code?
-            </h3>
-            <p className="text-sm text-orange-700 font-medium opacity-80">Enter the unique code shared by your friend to support them!</p>
-          </div>
-          
-          <form onSubmit={handleReferralSearch} className="w-full md:w-[400px] relative">
-            <div className="flex gap-2">
-              <div className="relative flex-1">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-orange-300" />
-                <Input 
-                  placeholder="Enter Code (e.g. REF-ABCDE)" 
-                  className="h-14 pl-10 bg-white border-orange-200 text-zinc-900 font-bold placeholder:text-zinc-400 rounded-2xl focus:ring-orange-200"
-                  value={referralInput}
-                  onChange={(e) => setReferralInput(e.target.value.toUpperCase())}
-                />
-              </div>
-              <Button type="submit" className="h-14 px-8 bg-zinc-900 hover:bg-black text-white rounded-2xl font-black uppercase italic tracking-wider">
-                Apply
-              </Button>
-            </div>
-          </form>
-        </div>
-      </section>
-
-      {/* Active Referral Notice */}
-      {activeReferrer && (
-        <motion.div 
-          initial={{ opacity: 0, x: -10 }}
-          animate={{ opacity: 1, x: 0 }}
-          className="bg-blue-600/10 border-l-4 border-blue-600 p-4 rounded-r-2xl flex items-center justify-between"
-        >
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold text-lg">
-              {activeReferrer.display_name?.[0].toUpperCase()}
-            </div>
-            <div>
-              <p className="text-sm font-bold text-blue-900 tracking-tight">Referral Code Applied: {activeReferrer.display_name}</p>
-              <p className="text-[10px] text-blue-600 font-bold uppercase tracking-widest">You are currently supporting this member</p>
-            </div>
-          </div>
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            className="text-blue-600 hover:bg-blue-600/10 font-black text-[10px]"
-            onClick={() => {
-              setActiveReferrer(null);
-              setSearch('');
-              localStorage.removeItem('global_session_referrer');
-              toast.info('Referral cleared');
-            }}
+      <section className="relative h-[300px] md:h-[500px] rounded-[2rem] sm:rounded-[3rem] overflow-hidden bg-zinc-900 group">
+        <AnimatePresence mode="wait">
+          <motion.div 
+            key={currentBannerIndex}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.7 }}
+            className="absolute inset-0"
           >
-            CLEAR REFERRAL
-          </Button>
-        </motion.div>
-      )}
+            <img 
+              src={banners.length > 0 ? banners[currentBannerIndex].image_url : "https://images.unsplash.com/photo-1524995997946-a1c2e315a42f?auto=format&fit=crop&w=1920&q=80"} 
+              alt="Banner" 
+              className="w-full h-full object-cover"
+              referrerPolicy="no-referrer"
+            />
+            <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/40 to-transparent flex items-center px-8 sm:px-16">
+              <div className="max-w-2xl space-y-4 md:space-y-6">
+                <motion.div
+                  initial={{ y: 20, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  transition={{ delay: 0.2 }}
+                >
+                  <Badge className="bg-orange-600 hover:bg-orange-600 text-white border-none px-4 py-1 mb-4 hidden sm:inline-flex">PREMIUM COLLECTION</Badge>
+                  <h1 className="text-4xl sm:text-7xl font-black text-white tracking-tighter leading-[0.9]">
+                    READ. LEARN. <br />
+                    <span className="text-orange-500 italic">DOMINATE.</span>
+                  </h1>
+                </motion.div>
+                <motion.p 
+                  initial={{ y: 20, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  transition={{ delay: 0.3 }}
+                  className="text-zinc-300 text-sm sm:text-lg max-w-lg font-medium"
+                >
+                  Access thousands of premium ebooks from top authors. 
+                  Knowledge is the best investment you'll ever make.
+                </motion.p>
+                <motion.div
+                  initial={{ y: 20, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  transition={{ delay: 0.4 }}
+                  className="flex gap-4"
+                >
+                  <Button className="bg-white text-zinc-900 hover:bg-zinc-200 h-10 sm:h-12 px-6 sm:px-8 rounded-xl font-black text-xs sm:text-sm shadow-xl active:scale-95 transition-transform">
+                    EXPLORE NOW
+                  </Button>
+                </motion.div>
+              </div>
+            </div>
+          </motion.div>
+        </AnimatePresence>
+
+        {/* Manual Controls */}
+        {banners.length > 1 && (
+          <>
+            <button 
+              onClick={(e) => { e.stopPropagation(); prevBanner(); }}
+              className="absolute left-4 top-1/2 -translate-y-1/2 w-10 sm:w-12 h-10 sm:h-12 rounded-full bg-black/20 backdrop-blur-md border border-white/10 flex items-center justify-center text-white md:opacity-0 md:group-hover:opacity-100 transition-opacity hover:bg-black/40 z-20"
+            >
+              <ChevronLeft className="w-6 h-6" />
+            </button>
+            <button 
+              onClick={(e) => { e.stopPropagation(); nextBanner(); }}
+              className="absolute right-4 top-1/2 -translate-y-1/2 w-10 sm:w-12 h-10 sm:h-12 rounded-full bg-black/20 backdrop-blur-md border border-white/10 flex items-center justify-center text-white md:opacity-0 md:group-hover:opacity-100 transition-opacity hover:bg-black/40 z-20"
+            >
+              <ChevronRight className="w-6 h-6" />
+            </button>
+
+            {/* Indicator Dots */}
+            <div className="absolute bottom-6 sm:bottom-10 left-1/2 -translate-x-1/2 flex gap-2 z-20">
+              {banners.map((_, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => setCurrentBannerIndex(idx)}
+                  className={`h-1.5 rounded-full transition-all duration-300 ${idx === currentBannerIndex ? 'w-8 bg-orange-500' : 'w-2 bg-white/30'}`}
+                />
+              ))}
+            </div>
+          </>
+        )}
+      </section>
 
       {/* Filters */}
       <div id="search-section" className="flex flex-col sm:flex-row gap-4 items-center justify-between bg-white p-4 rounded-2xl border border-zinc-200 shadow-sm">
@@ -452,12 +363,14 @@ export default function Home({ user }: { user: User | null }) {
           >
             <Card className="overflow-hidden border-zinc-200 hover:shadow-xl transition-all duration-300 rounded-2xl bg-white flex flex-col h-full cursor-pointer" onClick={() => navigate(`/ebook/${ebook.id}`)}>
               <div className="relative aspect-[3/4] overflow-hidden block">
-                <img 
-                  src={ebook.cover_url || undefined} 
-                  alt={ebook.title}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                  referrerPolicy="no-referrer"
-                />
+                {ebook.cover_url && (
+                  <img 
+                    src={ebook.cover_url} 
+                    alt={ebook.title}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                    referrerPolicy="no-referrer"
+                  />
+                )}
                 <div className="absolute top-3 right-3 z-10">
                   <Button 
                     variant="secondary" 

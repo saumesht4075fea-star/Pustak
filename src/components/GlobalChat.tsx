@@ -159,7 +159,11 @@ export default function GlobalChat({ user }: GlobalChatProps) {
                         className={`flex gap-3 ${msg.user_id === user.id ? 'flex-row-reverse' : ''}`}
                       >
                         <div className="w-8 h-8 rounded-full bg-zinc-200 overflow-hidden shrink-0">
-                          <img src={msg.avatar_url} alt={msg.display_name} className="w-full h-full object-cover" />
+                          <img 
+                            src={msg.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${msg.user_id}`} 
+                            alt={msg.display_name} 
+                            className="w-full h-full object-cover" 
+                          />
                         </div>
                         <div className={`space-y-1 max-w-[80%] ${msg.user_id === user.id ? 'items-end' : ''}`}>
                           <div className={`text-[10px] font-black uppercase tracking-widest text-zinc-400 ${msg.user_id === user.id ? 'text-right' : ''}`}>

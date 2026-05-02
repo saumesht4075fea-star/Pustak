@@ -11,11 +11,10 @@ export const supabase = createClient(
   supabaseAnonKey || 'placeholder',
   {
     auth: {
-      storage: typeof window !== 'undefined' ? window.localStorage : undefined,
-      storageKey: `sb-auth-token-${typeof window !== 'undefined' ? (window.name = window.name || 'tab-' + Math.random().toString(36).substring(2, 10)) : 'default'}`,
       autoRefreshToken: true,
       persistSession: true,
-      detectSessionInUrl: true
+      detectSessionInUrl: true,
+      storage: typeof window !== 'undefined' ? window.localStorage : undefined,
     }
   }
 );

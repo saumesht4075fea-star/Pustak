@@ -12,7 +12,7 @@ import ProductDetail from './pages/ProductDetail';
 import SellerDashboard from './pages/SellerDashboard';
 import ProfilePage from './pages/Profile';
 import GlobalChat from './components/GlobalChat';
-import { BookOpen, Heart, ShoppingBag, User as UserIcon, Instagram, LogIn, LogOut, ShieldCheck, AlertTriangle, LayoutDashboard, UserCircle, Download } from 'lucide-react';
+import { BookOpen, Heart, ShoppingBag, User as UserIcon, Instagram, LogIn, LogOut, ShieldCheck, AlertTriangle, LayoutDashboard, UserCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Toaster } from '@/components/ui/sonner';
 import { toast } from 'sonner';
@@ -23,7 +23,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 async function syncUser(user: User, displayName?: string) {
   try {
-    const adminEmails = ['saumesht4075fea@gmail.com', 'mohittttt868@gmail.com'];
+    const adminEmails = ['saumesht4075fea@gmail.com', 'mohittttt868@gmail.com', 'jeetusharma1583@gmail.com'];
     const role = adminEmails.includes(user.email || '') ? 'admin' : 'customer';
     
     const { error } = await supabase.from('profiles').upsert({
@@ -142,7 +142,7 @@ function Navbar({ user, isAdmin, isSeller, hasOrders }: { user: User | null; isA
             </Button>
           </Link>
           
-          {(isAdmin || isSeller || hasOrders) && user && (
+          {isSeller && !isAdmin && user && (
             <Link to="/dashboard">
               <Button variant="ghost" size="icon" className="text-blue-600">
                 <LayoutDashboard className="w-5 h-5" />
@@ -171,13 +171,6 @@ function Navbar({ user, isAdmin, isSeller, hasOrders }: { user: User | null; isA
                   <p className="text-[8px] font-bold text-zinc-400 group-hover:text-orange-400">EDIT PROFILE</p>
                 </div>
               </Link>
-              <div className="h-6 w-[1px] bg-zinc-200 mx-2" />
-              <a href="/api/download-source" download>
-                <Button variant="ghost" size="sm" className="flex gap-2 text-zinc-600 hover:text-blue-600">
-                  <Download className="w-4 h-4" />
-                  <span className="hidden lg:inline text-xs font-bold uppercase">Download Code</span>
-                </Button>
-              </a>
               <div className="h-6 w-[1px] bg-zinc-200 mx-2" />
               <Button variant="ghost" size="sm" onClick={handleLogout} className="flex gap-2">
                 <LogOut className="w-4 h-4 text-zinc-400" />
@@ -259,7 +252,7 @@ function Navbar({ user, isAdmin, isSeller, hasOrders }: { user: User | null; isA
             href="https://instagram.com" 
             target="_blank" 
             rel="noopener noreferrer"
-            className="ml-2 p-2 text-zinc-600 hover:text-pink-600 transition-colors"
+            className="hidden sm:flex ml-2 p-2 text-zinc-600 hover:text-pink-600 transition-colors"
           >
             <Instagram className="w-5 h-5" />
           </a>
@@ -278,39 +271,48 @@ export default function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Global referral tracking
-    const params = new URLSearchParams(window.location.search);
-    const ref = params.get('ref');
-    if (ref && user && ref !== user.id) {
-      localStorage.setItem('global_session_referrer', ref);
-      // Optional: Clean URL
-      const newUrl = window.location.pathname + window.location.hash;
-      window.history.replaceState({}, '', newUrl);
-    } else if (ref && !user) {
-      localStorage.setItem('global_session_referrer', ref);
-    }
+    const initializeAuth = async () => {
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+        if (error) {
+          if (error.message.includes('Refresh Token Not Found') || error.message.includes('invalid_refresh_token')) {
+            await supabase.auth.signOut();
+          }
+          console.error('Session error:', error);
+        }
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        checkRole(session.user);
-        checkOrders(session.user);
+        const currentUser = session?.user ?? null;
+        setUser(currentUser);
+        if (currentUser) {
+          checkRole(currentUser);
+          checkOrders(currentUser);
+        }
+      } catch (err) {
+        console.error('Auth initialization error:', err);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
-    });
+    };
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    initializeAuth();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       const currentUser = session?.user ?? null;
-      setUser(currentUser);
-      if (currentUser) {
-        checkRole(currentUser);
-        syncUser(currentUser);
-        checkOrders(currentUser);
-      } else {
+      
+      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        setUser(currentUser);
+        if (currentUser) {
+          checkRole(currentUser);
+          syncUser(currentUser);
+          checkOrders(currentUser);
+        }
+      } else if (event === 'SIGNED_OUT') {
+        setUser(null);
         setIsAdmin(false);
         setIsSeller(false);
         setHasOrders(false);
       }
+      
       setLoading(false);
     });
 
@@ -329,7 +331,7 @@ export default function App() {
   };
 
   const checkRole = async (user: User) => {
-    const adminEmails = ['saumesht4075fea@gmail.com', 'mohittttt868@gmail.com'];
+    const adminEmails = ['saumesht4075fea@gmail.com', 'mohittttt868@gmail.com', 'jeetusharma1583@gmail.com'];
     if (adminEmails.includes(user.email || '')) {
       setIsAdmin(true);
       setIsSeller(true);
@@ -361,7 +363,7 @@ export default function App() {
             <Routes>
               <Route path="/" element={<Home user={user} />} />
               <Route path="/admin" element={isAdmin ? <Admin /> : <Home user={user} />} />
-              <Route path="/dashboard" element={user ? <SellerDashboard user={user} isAdmin={isAdmin} isSeller={isSeller} /> : <Home user={user} />} />
+              <Route path="/dashboard" element={(user && !isAdmin) ? <SellerDashboard user={user} isAdmin={isAdmin} isSeller={isSeller} /> : <Home user={user} />} />
               <Route path="/wishlist" element={<Wishlist user={user} />} />
               <Route path="/orders" element={<Orders user={user} />} />
               <Route path="/ebook/:id" element={<ProductDetail user={user} isAdmin={isAdmin} isSeller={isSeller} />} />

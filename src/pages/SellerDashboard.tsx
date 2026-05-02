@@ -65,6 +65,7 @@ export default function SellerDashboard({ user, isAdmin, isSeller }: { user: Use
   const fetchData = async () => {
     if (!user) return;
     setLoading(true);
+    
     // Fetch Profile
     const { data: profileData } = await supabase
       .from('profiles')
@@ -76,7 +77,7 @@ export default function SellerDashboard({ user, isAdmin, isSeller }: { user: Use
     // Fetch Affiliate Sales (Success & Pending) - Sales REFERRED by this user
     const { data: affiliateData } = await supabase
       .from('orders')
-      .select('*, ebook:ebooks(title, commission_amount, cover_url, seller_id), profiles(*)')
+      .select('*, ebook:ebooks(id, title, author, commission_amount, cover_url, seller_id), profiles(*)')
       .eq('referrer_id', user.id)
       .in('status', ['success', 'pending'])
       .order('created_at', { ascending: false });
@@ -489,7 +490,7 @@ export default function SellerDashboard({ user, isAdmin, isSeller }: { user: Use
                     <div key={order.id} className="bg-white/5 border border-white/10 rounded-2xl p-6 space-y-4 hover:bg-white/10 transition-colors">
                       <div className="flex justify-between items-start">
                           <div className="w-12 h-16 bg-zinc-800 rounded-md overflow-hidden shrink-0 shadow-lg">
-                           <img src={order.ebook?.cover_url || undefined} alt="" className="w-full h-full object-cover" />
+                           {order.ebook?.cover_url && <img src={order.ebook.cover_url} alt="" className="w-full h-full object-cover" />}
                         </div>
                         <Badge className="bg-green-500 text-white border-none text-[10px] font-black italic">
                           ₹{order.ebook?.commission_amount || 0}
@@ -569,80 +570,6 @@ export default function SellerDashboard({ user, isAdmin, isSeller }: { user: Use
           </Card>
         </motion.div>
 
-        <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.3 }}>
-          <Card className="border-none shadow-xl shadow-zinc-200/50 rounded-[2.5rem] p-8 bg-white h-full overflow-hidden relative">
-            <CardHeader className="px-0 pt-0">
-              <CardTitle className="text-xl font-black uppercase italic flex items-center gap-2 text-zinc-900">
-                <Package className="w-5 h-5 text-green-600" />
-                Recent Sales
-              </CardTitle>
-            </CardHeader>
-            <div className="mt-4 space-y-4">
-              {allUniqueSales.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 10).map((sale) => (
-                <div key={sale.id} className={`flex items-center justify-between p-4 rounded-2xl border ${
-                  sale.status === 'success' ? 'bg-blue-50/50 border-blue-100' : 'bg-white border-zinc-100'
-                }`}>
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm">
-                      {sale.ebook?.seller_id === user?.id ? (
-                        <Package className={`w-5 h-5 ${sale.status === 'success' ? 'text-green-600' : 'text-zinc-300'}`} />
-                      ) : (
-                        <Share2 className={`w-5 h-5 ${sale.status === 'success' ? 'text-blue-600' : 'text-zinc-300'}`} />
-                      )}
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-1.5">
-                        <p className="font-black text-[11px] text-zinc-900 leading-tight uppercase italic">
-                          {sale.ebook?.seller_id === user?.id ? 'Direct Sale' : 'Affiliate Sale'}
-                        </p>
-                        <span className="text-[10px] text-zinc-400">•</span>
-                        <p className="text-[10px] text-zinc-500 font-bold">Buyer: {sale.profiles?.display_name || 'Guest'}</p>
-                      </div>
-                      <p className="text-[10px] text-zinc-400 font-medium line-clamp-1">
-                        {sale.ebook?.title} • {new Date(sale.created_at).toLocaleDateString()}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className={`font-black tracking-tighter ${sale.status === 'success' ? 'text-blue-600' : 'text-zinc-400'}`}>
-                      +₹{(() => {
-                        if (sale.ebook?.seller_id === user?.id) {
-                          const commission = sale.commission_amount || sale.ebook?.commission_amount || 0;
-                          const adminFee = 60;
-                          return (sale.amount - commission - adminFee);
-                        }
-                        return (sale.commission_amount || sale.ebook?.commission_amount || 0);
-                      })()}
-                    </p>
-                    <p className={`text-[8px] font-black uppercase tracking-wider ${
-                      sale.status === 'success' ? 'text-blue-400' : 'text-zinc-300'
-                    }`}>
-                      {sale.status === 'success' ? 'Awarded' : 'Pending'}
-                    </p>
-                  </div>
-                </div>
-              ))}
-              {allUniqueSales.length === 0 && (
-                <div className="text-center py-20 bg-zinc-50 rounded-3xl border-2 border-dashed border-zinc-100">
-                  <div className="flex flex-col items-center gap-2 opacity-30 text-zinc-400">
-                    <Share2 className="w-10 h-10" />
-                    <p className="text-sm font-black italic uppercase">NO SALES YET</p>
-                    <p className="text-[10px] font-bold">SHARE YOUR CODE TO START EARNING</p>
-                  </div>
-                </div>
-              )}
-            </div>
-            
-            <div className="mt-8 p-4 bg-zinc-900 rounded-2xl text-white flex items-center gap-4">
-              <div className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center">
-                <Info className="w-5 h-5 text-orange-500" />
-              </div>
-              <p className="text-[10px] font-bold text-zinc-300 leading-relaxed italic">
-                Support is available 10 AM - 6 PM IST. Withdrawals are processed twice a week.
-              </p>
-            </div>
-          </Card>
-        </motion.div>
       </div>
     </div>
   );

@@ -6,8 +6,8 @@ import { Ebook, Review, Profile } from '../types';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { Star, MessageSquare, Heart, ArrowLeft, ShoppingBag, ShieldCheck, Plus, Share2, Copy, Check, ArrowRight, Loader2, TrendingUp, BadgeCheck } from 'lucide-react';
-import { motion } from 'motion/react';
+import { Star, MessageSquare, Heart, ArrowLeft, ShoppingBag, ShieldCheck, Plus, Share2, Copy, Check, ArrowRight, Loader2, TrendingUp, BadgeCheck, BookOpen } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
@@ -29,6 +29,17 @@ export default function ProductDetail({ user, isAdmin, isSeller }: { user: User 
   const [hasPurchased, setHasPurchased] = useState(false);
   const [hasAnyOrders, setHasAnyOrders] = useState(false);
   const [checkingPurchase, setCheckingPurchase] = useState(true);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+
+  const images = ebook ? [ebook.cover_url, ...(ebook.images || [])] : [];
+
+  const nextImage = () => {
+    setCurrentImageIndex((prev) => (prev + 1) % images.length);
+  };
+
+  const prevImage = () => {
+    setCurrentImageIndex((prev) => (prev - 1 + images.length) % images.length);
+  };
 
   const [referralCodeInput, setReferralCodeInput] = useState('');
   const [isVerifyingCode, setIsVerifyingCode] = useState(false);
@@ -55,11 +66,16 @@ export default function ProductDetail({ user, isAdmin, isSeller }: { user: User 
 
         const { data: prof, error } = await supabase
           .from('profiles')
-          .select('uid')
+          .select('uid, role')
           .eq('uid', code)
           .single();
         
         if (prof && !error) {
+          if (prof.role === 'admin') {
+            setReferralCodeError('Cannot use admin referral');
+            setIsVerifyingCode(false);
+            return;
+          }
           setAppliedReferrerId(prof.uid);
           
           // Track click
@@ -77,12 +93,15 @@ export default function ProductDetail({ user, isAdmin, isSeller }: { user: User 
       // 2. Try looking up by Order Referral Code
       const { data: orderData } = await supabase
         .from('orders')
-        .select('user_id')
+        .select('user_id, profiles!inner(role)')
         .eq('referral_code', code)
         .limit(1);
 
       if (orderData && orderData.length > 0) {
-        if (orderData[0].user_id === user?.id) {
+        // @ts-ignore
+        if (orderData[0].profiles?.role === 'admin') {
+          setReferralCodeError('Cannot use admin referral');
+        } else if (orderData[0].user_id === user?.id) {
           setReferralCodeError('Cannot refer yourself');
         } else {
           setAppliedReferrerId(orderData[0].user_id);
@@ -99,14 +118,16 @@ export default function ProductDetail({ user, isAdmin, isSeller }: { user: User 
         // 3. Fallback to legacy username matching
         const { data: profiles } = await supabase
           .from('profiles')
-          .select('uid, display_name');
+          .select('uid, display_name, role');
         
         const match = profiles?.find(p => 
           p.display_name?.replace(/\s+/g, '').toLowerCase() === code.toLowerCase()
         );
 
         if (match) {
-          if (match.uid === user?.id) {
+          if (match.role === 'admin') {
+            setReferralCodeError('Cannot use admin referral');
+          } else if (match.uid === user?.id) {
             setReferralCodeError('Cannot refer yourself');
           } else {
             setAppliedReferrerId(match.uid);
@@ -145,17 +166,9 @@ export default function ProductDetail({ user, isAdmin, isSeller }: { user: User 
         }, fetchReviews)
         .subscribe();
 
-      // Store referrer if present
-      const refFromUrl = searchParams.get('ref');
-      const refFromSession = localStorage.getItem('global_session_referrer');
-      const ref = refFromUrl || refFromSession;
+      // Store referrer if present from manually entered input or search params (if allowed)
+      // Actually user said only when someone paste the code. So we remove auto-picker.
       
-      if (ref && ref !== user?.id) {
-        setReferralCodeInput(ref);
-        // Auto-verify if possible
-        verifyCode(ref);
-      }
-
       let wishlistChannel: any;
       let ordersChannel: any;
 
@@ -352,7 +365,7 @@ export default function ProductDetail({ user, isAdmin, isSeller }: { user: User 
     
     // 1. Ensure current user has a profile first (prevents user_id FK violation)
     try {
-      const adminEmails = ['saumesht4075fea@gmail.com', 'mohittttt868@gmail.com'];
+      const adminEmails = ['saumesht4075fea@gmail.com', 'mohittttt868@gmail.com', 'jeetusharma1583@gmail.com'];
       const role = adminEmails.includes(user.email || '') ? 'admin' : 'customer';
       
       await supabase.from('profiles').upsert({
@@ -383,16 +396,17 @@ export default function ProductDetail({ user, isAdmin, isSeller }: { user: User 
         console.warn('Invalid referrer ID format detected, resetting to null:', finalReferrerId);
         finalReferrerId = null;
       } else {
-        // Final sanity check: does this profile actually exist right now?
+        // Final sanity check: does this profile actually exist and is NOT an admin?
+        // RULE: Referral should not work for company affiliate admin accounts
         try {
           const { data, error } = await supabase
             .from('profiles')
-            .select('uid')
+            .select('uid, role')
             .eq('uid', finalReferrerId)
-            .maybeSingle(); // maybeSingle() is safer as it doesn't throw on 0 rows
+            .maybeSingle(); 
           
-          if (error || !data) {
-            console.warn('Referrer profile not found in database, resetting to null:', finalReferrerId);
+          if (error || !data || data.role === 'admin') {
+            console.warn('Referrer profile not found or is an admin, resetting to null:', finalReferrerId);
             finalReferrerId = null;
           }
         } catch (e) {
@@ -497,23 +511,60 @@ export default function ProductDetail({ user, isAdmin, isSeller }: { user: User 
       </Button>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
-        {/* Left: Image */}
+        {/* Left: Image Slider */}
         <motion.div 
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
-          className="relative aspect-[3/4] rounded-3xl overflow-hidden shadow-2xl bg-white border border-zinc-100"
+          className="relative aspect-[3/4] rounded-3xl overflow-hidden shadow-2xl bg-white border border-zinc-100 group"
         >
-          <img 
-            src={ebook.cover_url || undefined} 
-            alt={ebook.title}
-            className="w-full h-full object-cover"
-            referrerPolicy="no-referrer"
-          />
+          <AnimatePresence mode="wait">
+            <motion.img 
+              key={currentImageIndex}
+              src={images[currentImageIndex]} 
+              alt={`${ebook.title} - ${currentImageIndex + 1}`}
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              transition={{ duration: 0.3 }}
+              className="w-full h-full object-cover"
+              referrerPolicy="no-referrer"
+            />
+          </AnimatePresence>
+
+          {/* Slider Controls */}
+          {images.length > 1 && (
+            <>
+              <button 
+                onClick={(e) => { e.stopPropagation(); prevImage(); }}
+                className="absolute left-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/20 backdrop-blur-md border border-white/30 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-white/40"
+              >
+                <ArrowLeft className="w-5 h-5" />
+              </button>
+              <button 
+                onClick={(e) => { e.stopPropagation(); nextImage(); }}
+                className="absolute right-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/20 backdrop-blur-md border border-white/30 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-white/40"
+              >
+                <ArrowRight className="w-5 h-5" />
+              </button>
+              
+              {/* Dots */}
+              <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex gap-1.5 px-3 py-1.5 rounded-full bg-black/20 backdrop-blur-sm border border-white/10">
+                {images.map((_, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => setCurrentImageIndex(idx)}
+                    className={`w-1.5 h-1.5 rounded-full transition-all ${idx === currentImageIndex ? 'w-4 bg-white' : 'bg-white/40'}`}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+
           <div className="absolute top-6 right-6">
             <Button 
               variant="secondary" 
               size="icon" 
-              className={`rounded-full shadow-xl w-12 h-12 ${wishlist.includes(ebook.id) ? 'text-red-500' : 'text-zinc-400'}`}
+              className={`rounded-full shadow-xl w-12 h-12 transition-transform active:scale-90 ${wishlist.includes(ebook.id) ? 'text-red-500' : 'text-zinc-400'}`}
               onClick={toggleWishlist}
             >
               <Heart className={`w-6 h-6 ${wishlist.includes(ebook.id) ? 'fill-current' : ''}`} />
@@ -606,7 +657,7 @@ export default function ProductDetail({ user, isAdmin, isSeller }: { user: User 
             </div>
             <div className="p-4 bg-zinc-50 rounded-2xl border border-zinc-100 flex items-center gap-3">
               <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm">
-                <BookOpenIcon className="w-5 h-5 text-orange-600" />
+                <BookOpen className="w-5 h-5 text-orange-600" />
               </div>
               <div>
                 <p className="text-xs text-zinc-500 font-medium">Format</p>
@@ -721,13 +772,59 @@ export default function ProductDetail({ user, isAdmin, isSeller }: { user: User 
           <div className="grid gap-6 py-4">
             {!isVerifying ? (
               <div className="space-y-6">
-                {appliedReferrerId && hasAnyOrders && (
-                  <div className="flex items-center gap-2 p-3 bg-green-50 rounded-xl border border-green-100">
-                    <BadgeCheck className="w-4 h-4 text-green-600" />
-                    <p className="text-[10px] text-green-700 font-bold uppercase tracking-tight">Referral Applied Successfully</p>
+                <div className="p-4 bg-zinc-50 rounded-2xl border border-zinc-100 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-[10px] font-black uppercase text-zinc-400 tracking-widest flex items-center gap-2">
+                       <Star className="w-3 h-3 fill-orange-500 text-orange-500" />
+                       Referral Code
+                    </Label>
+                    {appliedReferrerId && (
+                      <Badge className="bg-green-100 text-green-700 text-[9px] uppercase border-none">
+                        Applied
+                      </Badge>
+                    )}
                   </div>
-                )}
-                
+                  
+                  {!appliedReferrerId ? (
+                    <div className="flex gap-2">
+                      <Input 
+                        placeholder="REF-XXXXX" 
+                        className="bg-white border-zinc-200 uppercase font-bold text-xs"
+                        value={referralCodeInput}
+                        onChange={(e) => setReferralCodeInput(e.target.value.toUpperCase())}
+                      />
+                      <Button 
+                        size="sm"
+                        onClick={() => verifyCode(referralCodeInput)}
+                        disabled={isVerifyingCode || !referralCodeInput}
+                        className="bg-zinc-900 text-white hover:bg-black font-black text-[10px]"
+                      >
+                        {isVerifyingCode ? '...' : 'APPLY'}
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between bg-white p-2 rounded-xl border border-zinc-100">
+                      <span className="text-xs font-bold text-zinc-900">Code Active</span>
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={() => {
+                          setAppliedReferrerId(null);
+                          setReferralCodeInput('');
+                          localStorage.removeItem('global_session_referrer');
+                        }}
+                        className="text-[10px] text-zinc-400 font-bold hover:text-red-500"
+                      >
+                        REMOVE
+                      </Button>
+                    </div>
+                  )}
+                  {referralCodeError && <p className="text-[10px] text-red-500 font-bold">{referralCodeError}</p>}
+                  {!appliedReferrerId && !referralCodeInput && (
+                    <p className="text-[10px] text-zinc-400 font-medium italic">Empty? This will be a direct sale to company.</p>
+                  )}
+                </div>
+
                 {appliedReferrerId && !hasAnyOrders && (
                   <div className="flex items-center gap-2 p-3 bg-orange-50 rounded-xl border border-orange-100">
                     <TrendingUp className="w-4 h-4 text-orange-600" />

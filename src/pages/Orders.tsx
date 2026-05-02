@@ -159,7 +159,7 @@ export default function Orders({ user }: { user: User | null }) {
             <Card className="border-zinc-200 overflow-hidden">
               <CardContent className="p-6 flex flex-col sm:flex-row gap-6">
                 <div className="flex-shrink-0">
-                  <img src={order.ebook?.cover_url || undefined} alt="" className="w-32 h-44 object-cover rounded-lg shadow-md" />
+                  {order.ebook?.cover_url && <img src={order.ebook.cover_url} alt="" className="w-32 h-44 object-cover rounded-lg shadow-md" />}
                 </div>
                 <div className="flex-grow space-y-4">
                   <div className="flex justify-between items-start">
@@ -304,7 +304,7 @@ export default function Orders({ user }: { user: User | null }) {
             <div className="flex items-center justify-between p-4 bg-zinc-900 border-b border-zinc-800 shrink-0">
               <div className="flex items-center gap-4">
                 <div className="w-10 h-14 rounded-md overflow-hidden bg-zinc-800 shadow-md">
-                  <img src={readingEbook?.cover_url || undefined} alt="" className="w-full h-full object-cover" />
+                  {readingEbook?.cover_url && <img src={readingEbook.cover_url} alt="" className="w-full h-full object-cover" />}
                 </div>
                 <div>
                   <DialogTitle className="text-white font-black text-lg line-clamp-1">{readingEbook?.title}</DialogTitle>

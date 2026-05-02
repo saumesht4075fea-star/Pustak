@@ -109,7 +109,7 @@ export default function Wishlist({ user }: { user: User | null }) {
             <Card className="border-zinc-200 overflow-hidden hover:shadow-md transition-shadow">
               <CardContent className="p-4 flex items-center justify-between">
                 <div className="flex items-center gap-4">
-                  <img src={item.ebook?.cover_url || undefined} alt="" className="w-16 h-24 object-cover rounded shadow-sm" />
+                  {item.ebook?.cover_url && <img src={item.ebook.cover_url} alt="" className="w-16 h-24 object-cover rounded shadow-sm" />}
                   <div>
                     <h3 className="font-bold text-lg tracking-tight">{item.ebook?.title}</h3>
                     <p className="text-sm text-zinc-500">by {item.ebook?.author}</p>

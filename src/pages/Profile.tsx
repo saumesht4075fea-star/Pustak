@@ -79,30 +79,30 @@ export default function Profile({ user }: { user: User | null }) {
   if (!user || !profile) return null;
 
   return (
-    <div className="max-w-2xl mx-auto space-y-8">
-      <header>
-        <h1 className="text-4xl font-black tracking-tight text-zinc-900 uppercase italic">My Account</h1>
-        <p className="text-zinc-500 font-medium">Manage your personal details and preferences</p>
+    <div className="max-w-2xl mx-auto space-y-6 sm:space-y-8 px-4 sm:px-0">
+      <header className="text-center sm:text-left pt-4 sm:pt-0">
+        <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-zinc-900 uppercase italic">My Account</h1>
+        <p className="text-zinc-500 font-medium text-sm sm:text-base">Manage your personal details and preferences</p>
       </header>
 
-      <div className="grid grid-cols-1 gap-8">
+      <div className="grid grid-cols-1 gap-6 sm:gap-8">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-          <Card className="border-none shadow-2xl shadow-zinc-200/50 rounded-[2.5rem] overflow-hidden bg-white">
-            <div className="h-32 bg-gradient-to-r from-orange-500 to-orange-600" />
-            <CardContent className="relative pt-0 px-8 pb-8">
-              <div className="flex flex-col sm:flex-row items-end gap-6 -mt-12 mb-8">
+          <Card className="border-none shadow-2xl shadow-zinc-200/50 rounded-[2rem] sm:rounded-[2.5rem] overflow-hidden bg-white">
+            <div className="h-24 sm:h-32 bg-gradient-to-r from-orange-500 to-orange-600" />
+            <CardContent className="relative pt-0 px-6 sm:px-8 pb-8">
+              <div className="flex flex-col sm:flex-row items-center sm:items-end gap-4 sm:gap-6 -mt-12 sm:-mt-12 mb-6 sm:mb-8 text-center sm:text-left">
                 <img 
                   src={profile.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${profile.uid}`} 
                   alt={profile.display_name} 
-                  className="w-32 h-32 rounded-[2rem] border-4 border-white shadow-xl bg-white"
+                  className="w-24 h-24 sm:w-32 sm:h-32 rounded-[1.5rem] sm:rounded-[2rem] border-4 border-white shadow-xl bg-white"
                 />
                 <div className="pb-2 space-y-1">
-                  <div className="flex items-center gap-2">
-                    <h2 className="text-3xl font-black text-zinc-900">{profile.display_name}</h2>
+                  <div className="flex items-center justify-center sm:justify-start gap-2">
+                    <h2 className="text-2xl sm:text-3xl font-black text-zinc-900">{profile.display_name}</h2>
                     {profile.role === 'admin' && <Shield className="w-5 h-5 text-orange-600" />}
                     {(profile.role === 'seller' || profile.role === 'admin') && <BadgeCheck className="w-5 h-5 text-blue-600" />}
                   </div>
-                  <p className="text-zinc-500 font-medium flex items-center gap-2">
+                  <p className="text-zinc-500 font-medium flex items-center justify-center sm:justify-start gap-2 text-sm">
                     <Mail className="w-4 h-4" />
                     {profile.email}
                   </p>
@@ -111,16 +111,16 @@ export default function Profile({ user }: { user: User | null }) {
 
               <div className="space-y-6">
                 <div className="space-y-2">
-                  <Label htmlFor="displayName" className="font-bold text-zinc-600 ml-1">Display Name</Label>
-                  <div className="flex gap-2">
+                  <Label htmlFor="displayName" className="font-bold text-zinc-600 ml-1 text-xs sm:text-sm">Display Name</Label>
+                  <div className="flex flex-col sm:flex-row gap-2">
                     <Input 
                       id="displayName"
-                      className="h-12 rounded-xl border-2 focus:border-orange-500 border-zinc-100 font-bold"
+                      className="h-12 rounded-xl border-2 focus:border-orange-500 border-zinc-100 font-bold w-full"
                       value={displayName}
                       onChange={(e) => setDisplayName(e.target.value)}
                     />
                     <Button 
-                      className="h-12 px-6 rounded-xl bg-zinc-900 hover:bg-black font-black gap-2"
+                      className="h-12 px-6 rounded-xl bg-zinc-900 hover:bg-black font-black gap-2 w-full sm:w-auto"
                       onClick={handleSave}
                       disabled={saving || displayName === profile.display_name}
                     >
@@ -128,12 +128,12 @@ export default function Profile({ user }: { user: User | null }) {
                       SAVE
                     </Button>
                   </div>
-                  <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest ml-1">
+                  <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest ml-1 text-center sm:text-left">
                     This name will be visible to other members and authors
                   </p>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="p-4 bg-zinc-50 rounded-2xl border border-zinc-100 space-y-1">
                     <div className="flex items-center gap-2 text-zinc-400">
                       <Calendar className="w-4 h-4" />
@@ -144,7 +144,7 @@ export default function Profile({ user }: { user: User | null }) {
                   <div className="p-4 bg-zinc-50 rounded-2xl border border-zinc-100 space-y-1">
                     <div className="flex items-center gap-2 text-zinc-400">
                       <Shield className="w-4 h-4" />
-                      <span className="text-[10px] font-black uppercase tracking-widest">Account Type</span>
+                      <span className="text-[10px] font-black uppercase tracking-widest text-xs">Account Type</span>
                     </div>
                     <p className="font-black text-orange-600 uppercase italic">
                       {profile.role.toUpperCase()}
@@ -161,16 +161,16 @@ export default function Profile({ user }: { user: User | null }) {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
         >
-          <Card className="border-none shadow-xl shadow-zinc-200/50 rounded-[2rem] bg-zinc-900 text-white p-6">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center">
+          <Card className="border-none shadow-xl shadow-zinc-200/50 rounded-[1.5rem] sm:rounded-[2rem] bg-zinc-900 text-white p-5 sm:p-6">
+            <div className="flex flex-col sm:flex-row items-center gap-4 text-center sm:text-left">
+              <div className="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center shrink-0">
                 <UserIcon className="w-6 h-6 text-orange-500" />
               </div>
               <div className="flex-1">
-                <h3 className="font-black italic uppercase">Affiliate Link Status</h3>
-                <p className="text-zinc-400 text-xs font-medium">Unique ID: {profile.uid}</p>
+                <h3 className="font-black italic uppercase text-sm sm:text-base">Affiliate Link Status</h3>
+                <p className="text-zinc-400 text-[10px] sm:text-xs font-medium break-all">Unique ID: {profile.uid}</p>
               </div>
-              <Badge className="bg-orange-600 text-white border-none font-black italic">ACTIVE</Badge>
+              <Badge className="bg-orange-600 text-white border-none font-black italic w-full sm:w-auto justify-center py-1">ACTIVE</Badge>
             </div>
           </Card>
         </motion.div>
