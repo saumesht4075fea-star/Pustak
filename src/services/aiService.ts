@@ -26,16 +26,19 @@ export async function getAIResponse(userMessage: string, chatHistory: { role: st
       parts: [{ text: h.text }]
     }));
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+    const model = ai.getGenerativeModel({ 
+      model: "gemini-1.5-flash",
+      systemInstruction: SYSTEM_INSTRUCTION,
+    });
+
+    const result = await model.generateContent({
       contents: [...formattedHistory, { role: 'user', parts: [{ text: userMessage }] }],
-      config: {
-        systemInstruction: SYSTEM_INSTRUCTION,
+      generationConfig: {
         temperature: 0.7,
       }
     });
 
-    return response.text;
+    return result.response.text();
   } catch (error) {
     console.error('Gemini API Error:', error);
     return "I'm sorry, I'm having a bit of trouble thinking right now. Please try again or contact support at support@pustak.com.";
