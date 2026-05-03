@@ -50,9 +50,36 @@ async function syncUser(user: User, displayName?: string) {
 function ConfigWarning() {
   if (isSupabaseConfigured) return null;
   return (
-    <div className="bg-orange-50 border-b border-orange-200 p-2 text-center flex items-center justify-center gap-2 text-orange-800 text-xs font-medium">
-      <AlertTriangle className="w-3 h-3" />
-      Supabase not configured. Please add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to Secrets.
+    <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-6 text-white text-center">
+      <div className="max-w-md space-y-6">
+        <div className="w-20 h-20 bg-orange-600 rounded-[2rem] flex items-center justify-center mx-auto animate-bounce">
+          <ShieldCheck className="w-10 h-10" />
+        </div>
+        <h1 className="text-3xl font-black italic uppercase tracking-tighter">Configuration Required</h1>
+        <p className="text-zinc-400 font-medium">
+          PUSTAK is ready to deploy, but your Supabase connection is missing.
+        </p>
+        <div className="bg-zinc-900 p-6 rounded-3xl border border-zinc-800 text-left space-y-4">
+          <p className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Render/Production Setup:</p>
+          <ul className="text-sm space-y-2 text-zinc-300">
+            <li className="flex gap-2">
+              <span className="text-orange-500 font-black">1.</span>
+              Go to Render Dashboard Environment
+            </li>
+            <li className="flex gap-2">
+              <span className="text-orange-500 font-black">2.</span>
+              Add VITE_SUPABASE_URL
+            </li>
+            <li className="flex gap-2">
+              <span className="text-orange-500 font-black">3.</span>
+              Add VITE_SUPABASE_ANON_KEY
+            </li>
+          </ul>
+        </div>
+        <p className="text-[10px] text-zinc-500 font-black uppercase tracking-[0.2em]">
+          PUSTAK COMMAND • INTELLECTUAL DOMINANCE
+        </p>
+      </div>
     </div>
   );
 }
@@ -127,7 +154,6 @@ function Navbar({ user, isAdmin, isSeller, hasOrders }: { user: User | null; isA
 
   return (
     <nav className="sticky top-0 z-40 w-full border-b border-zinc-200 bg-white/80 backdrop-blur-md">
-      <ConfigWarning />
       <div className="container mx-auto px-4 h-16 flex items-center justify-between">
         <Link to="/" className="flex items-center gap-2 group">
           <BookOpen className="w-6 h-6 text-orange-600 group-hover:rotate-12 transition-transform" />
@@ -280,6 +306,10 @@ export default function App() {
 
   useEffect(() => {
     const initializeAuth = async () => {
+      if (!isSupabaseConfigured) {
+        setLoading(false);
+        return;
+      }
       try {
         const { data: { session }, error } = await supabase.auth.getSession();
         if (error) {
@@ -314,6 +344,8 @@ export default function App() {
 
     initializeAuth();
 
+    if (!isSupabaseConfigured) return;
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       const currentUser = session?.user ?? null;
       
@@ -338,6 +370,7 @@ export default function App() {
   }, []);
 
   const checkOrders = async (user: User) => {
+    if (!isSupabaseConfigured) return;
     const { data } = await supabase
       .from('orders')
       .select('id')
@@ -349,6 +382,7 @@ export default function App() {
   };
 
   const checkRole = async (user: User) => {
+    if (!isSupabaseConfigured) return;
     const adminEmails = ['saumesht4075fea@gmail.com', 'mohittttt868@gmail.com', 'jeetusharma1583@gmail.com'];
     if (adminEmails.includes(user.email || '')) {
       setIsAdmin(true);
@@ -370,6 +404,10 @@ export default function App() {
 
   if (showSplash) {
     return <SplashScreen onComplete={() => setShowSplash(false)} />;
+  }
+
+  if (!isSupabaseConfigured) {
+    return <ConfigWarning />;
   }
 
   return (

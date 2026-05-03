@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { supabase } from '../lib/supabase';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { User } from '@supabase/supabase-js';
 import { Ebook, Review, Profile } from '../types';
 import { Button } from '@/components/ui/button';
@@ -47,7 +47,7 @@ export default function ProductDetail({ user, isAdmin, isSeller }: { user: User 
   const [appliedReferrerId, setAppliedReferrerId] = useState<string | null>(null);
 
   const verifyCode = async (code: string) => {
-    if (!code) return;
+    if (!code || !isSupabaseConfigured) return;
     setIsVerifyingCode(true);
     setReferralCodeError('');
     setAppliedReferrerId(null); // Clear previous match if any
@@ -152,7 +152,7 @@ export default function ProductDetail({ user, isAdmin, isSeller }: { user: User 
   };
 
   useEffect(() => {
-    if (id) {
+    if (id && isSupabaseConfigured) {
       fetchEbook();
       fetchReviews();
       
@@ -212,7 +212,7 @@ export default function ProductDetail({ user, isAdmin, isSeller }: { user: User 
   }, [id, user, searchParams]);
 
   const fetchEbook = async () => {
-    if (!id) return;
+    if (!id || !isSupabaseConfigured) return;
     const { data } = await supabase
       .from('ebooks')
       .select('*')
@@ -229,7 +229,7 @@ export default function ProductDetail({ user, isAdmin, isSeller }: { user: User 
   };
 
   const fetchReviews = async () => {
-    if (!id) return;
+    if (!id || !isSupabaseConfigured) return;
     const { data } = await supabase
       .from('reviews')
       .select('*')
@@ -239,7 +239,7 @@ export default function ProductDetail({ user, isAdmin, isSeller }: { user: User 
   };
 
   const fetchWishlist = async () => {
-    if (!user) return;
+    if (!user || !isSupabaseConfigured) return;
     const { data } = await supabase
       .from('wishlist')
       .select('ebook_id')
@@ -248,7 +248,7 @@ export default function ProductDetail({ user, isAdmin, isSeller }: { user: User 
   };
 
   const checkPurchase = async () => {
-    if (!user || !id) return;
+    if (!user || !id || !isSupabaseConfigured) return;
     const { data } = await supabase
       .from('orders')
       .select('id')
@@ -262,7 +262,7 @@ export default function ProductDetail({ user, isAdmin, isSeller }: { user: User 
   };
 
   const checkTotalOrders = async () => {
-    if (!user) return;
+    if (!user || !isSupabaseConfigured) return;
     const { data } = await supabase
       .from('orders')
       .select('id')

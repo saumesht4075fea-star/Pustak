@@ -67,10 +67,10 @@ export default function AIHelper({ user, isAdmin }: AIHelperProps) {
                   <Bot className="w-6 h-6" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-black italic uppercase tracking-widest leading-tight">PUSTAK AI</h3>
+                  <h3 className="text-sm font-black italic uppercase tracking-widest leading-tight">PUSTAK Assist</h3>
                   <div className="flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
-                    <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Active 24/7</span>
+                    <span className="w-1.5 h-1.5 bg-green-500 rounded-full" />
+                    <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Always Free</span>
                   </div>
                 </div>
               </div>

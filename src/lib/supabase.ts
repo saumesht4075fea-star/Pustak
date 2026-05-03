@@ -20,3 +20,11 @@ export const supabase = createClient(
 );
 
 export const isSupabaseConfigured = !!(supabaseUrl && supabaseAnonKey && !isPlaceholder);
+
+export function checkSupabaseConfig() {
+  if (!isSupabaseConfigured) {
+    console.warn('Supabase is not configured. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY environment variables.');
+    return false;
+  }
+  return true;
+}

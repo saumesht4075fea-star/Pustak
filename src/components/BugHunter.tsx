@@ -1,7 +1,7 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { AlertTriangle, RefreshCcw, ShieldAlert, Bug } from 'lucide-react';
 import { Button } from '../../components/ui/button';
-import { supabase } from '../lib/supabase';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 interface Props {
   children: ReactNode;
@@ -24,14 +24,13 @@ export class BugHunter extends Component<Props, State> {
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error('Uncaught error (BugHunter):', error, errorInfo);
-    this.reportError(error, errorInfo);
+    if (isSupabaseConfigured) {
+      this.reportError(error, errorInfo);
+    }
   }
 
   private async reportError(error: Error, errorInfo: ErrorInfo) {
     try {
-      // Logic to report error to Supabase
-      // We check if an error_logs table exists or just try to insert
-      // Metadata includes user agent, path, etc.
       await supabase.from('error_logs').insert({
         error_name: error.name,
         message: error.message,

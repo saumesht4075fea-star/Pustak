@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { supabase } from '../lib/supabase';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { ChatMessage } from '../types';
 import { User } from '@supabase/supabase-js';
 import { Button } from '../../components/ui/button';
@@ -22,7 +22,7 @@ export default function GlobalChat({ user, isAdmin }: GlobalChatProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && isSupabaseConfigured) {
       fetchMessages();
       
       const channel = supabase

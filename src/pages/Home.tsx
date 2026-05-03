@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { User } from '@supabase/supabase-js';
 import { motion } from 'motion/react';
 import { Heart, ShoppingCart, Star, Search, Filter, MessageSquare, Download, ChevronLeft, ChevronRight } from 'lucide-react';
@@ -44,7 +44,7 @@ export default function Home({ user }: { user: User | null }) {
   }, [search, ebooks]);
 
   useEffect(() => {
-    if (user) {
+    if (user && isSupabaseConfigured) {
       const fetchProfile = async () => {
         const { data } = await supabase
           .from('profiles')
@@ -72,6 +72,8 @@ export default function Home({ user }: { user: User | null }) {
   }, [user]);
 
   useEffect(() => {
+    if (!isSupabaseConfigured) return;
+
     const fetchEbooks = async () => {
       const { data } = await supabase
         .from('ebooks')
@@ -132,7 +134,7 @@ export default function Home({ user }: { user: User | null }) {
   }, []);
 
   useEffect(() => {
-    if (user) {
+    if (user && isSupabaseConfigured) {
       const fetchWishlist = async () => {
         const { data } = await supabase
           .from('wishlist')
