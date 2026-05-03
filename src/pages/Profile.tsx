@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { User as UserIcon, Mail, BadgeCheck, Shield, Calendar, Save, Loader2 } from 'lucide-react';
+import { User as UserIcon, Mail, BadgeCheck, Shield, Calendar, Save, Loader2, LogOut } from 'lucide-react';
 import { toast } from 'sonner';
 import { Profile as UserProfile } from '../types';
 
@@ -64,6 +64,16 @@ export default function Profile({ user }: { user: User | null }) {
       toast.error(err.message);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      toast.error(error.message);
+    } else {
+      toast.success('Logged out successfully');
+      window.location.href = '/';
     }
   };
 
@@ -151,6 +161,17 @@ export default function Profile({ user }: { user: User | null }) {
                     </p>
                   </div>
                 </div>
+              </div>
+
+              <div className="pt-8 border-t border-zinc-100">
+                <Button 
+                  variant="destructive"
+                  onClick={handleLogout}
+                  className="w-full h-14 bg-red-50 hover:bg-red-100 text-red-600 border-none rounded-2xl sm:rounded-3xl font-black italic uppercase tracking-widest text-xs flex items-center justify-center gap-3 transition-all"
+                >
+                  <LogOut className="w-4 h-4" />
+                  Terminate Session
+                </Button>
               </div>
             </CardContent>
           </Card>

@@ -11,8 +11,12 @@ import Orders from './pages/Orders';
 import ProductDetail from './pages/ProductDetail';
 import SellerDashboard from './pages/SellerDashboard';
 import ProfilePage from './pages/Profile';
+import About from './pages/About';
+import Help from './pages/Help';
 import GlobalChat from './components/GlobalChat';
-import { BookOpen, Heart, ShoppingBag, User as UserIcon, Instagram, LogIn, LogOut, ShieldCheck, AlertTriangle, LayoutDashboard, UserCircle } from 'lucide-react';
+import AIHelper from './components/AIHelper';
+import { BugHunter } from './components/BugHunter';
+import { BookOpen, Heart, ShoppingBag, User as UserIcon, Instagram, LogIn, LogOut, ShieldCheck, AlertTriangle, LayoutDashboard, UserCircle, Youtube, HelpCircle, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Toaster } from '@/components/ui/sonner';
 import { toast } from 'sonner';
@@ -162,20 +166,15 @@ function Navbar({ user, isAdmin, isSeller, hasOrders }: { user: User | null; isA
 
           {user ? (
             <div className="flex items-center gap-2">
-              <Link to="/profile" className="flex items-center gap-2 group p-1 pr-3 bg-zinc-50 hover:bg-orange-50 rounded-full border border-zinc-200 hover:border-orange-200 transition-all">
+              <Link to="/profile" className="flex items-center group p-0.5 sm:p-1 sm:pr-3 bg-zinc-50 hover:bg-orange-50 rounded-full border border-zinc-200 hover:border-orange-200 transition-all shrink-0">
                 <img src={user.user_metadata?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.id}`} alt="" className="w-8 h-8 rounded-full border border-white shadow-sm" />
-                <div className="hidden sm:flex flex-col items-start leading-tight">
+                <div className="hidden sm:flex flex-col items-start leading-tight sm:ml-2">
                   <p className="text-[10px] font-black text-zinc-900 group-hover:text-orange-600 transition-colors uppercase italic truncate max-w-[80px]">
                     {user.user_metadata?.display_name || user.email?.split('@')[0]}
                   </p>
                   <p className="text-[8px] font-bold text-zinc-400 group-hover:text-orange-400">EDIT PROFILE</p>
                 </div>
               </Link>
-              <div className="h-6 w-[1px] bg-zinc-200 mx-2" />
-              <Button variant="ghost" size="sm" onClick={handleLogout} className="flex gap-2">
-                <LogOut className="w-4 h-4 text-zinc-400" />
-                <span className="hidden lg:inline text-xs font-bold uppercase">Logout</span>
-              </Button>
             </div>
           ) : (
             <Dialog open={isLoginOpen} onOpenChange={setIsLoginOpen}>
@@ -249,10 +248,19 @@ function Navbar({ user, isAdmin, isSeller, hasOrders }: { user: User | null; isA
           )}
           
           <a 
+            href="https://youtube.com" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="hidden sm:flex ml-2 p-2 text-zinc-600 hover:text-red-600 transition-colors"
+          >
+            <Youtube className="w-5 h-5" />
+          </a>
+          
+          <a 
             href="https://instagram.com" 
             target="_blank" 
             rel="noopener noreferrer"
-            className="hidden sm:flex ml-2 p-2 text-zinc-600 hover:text-pink-600 transition-colors"
+            className="hidden sm:flex p-2 text-zinc-600 hover:text-pink-600 transition-colors"
           >
             <Instagram className="w-5 h-5" />
           </a>
@@ -275,8 +283,18 @@ export default function App() {
       try {
         const { data: { session }, error } = await supabase.auth.getSession();
         if (error) {
+          // If we have a refresh token error, forcefully clear local storage and sign out
           if (error.message.includes('Refresh Token Not Found') || error.message.includes('invalid_refresh_token')) {
-            await supabase.auth.signOut();
+            console.warn('Invalid session detected, clearing storage...');
+            // Attempt to clear common supabase storage keys just in case
+            Object.keys(localStorage).forEach(key => {
+              if (key.includes('supabase.auth.token') || key.startsWith('sb-')) {
+                localStorage.removeItem(key);
+              }
+            });
+            // Force a sign out to clear any internal SDK state
+            await supabase.auth.signOut().catch(() => {});
+            setUser(null);
           }
           console.error('Session error:', error);
         }
@@ -356,24 +374,68 @@ export default function App() {
 
   return (
     <Router>
-      <div className="min-h-screen bg-zinc-50 font-sans text-zinc-950">
-        <Navbar user={user} isAdmin={isAdmin} isSeller={isSeller} hasOrders={hasOrders} />
-        <main className="container mx-auto px-4 py-8">
-          <AnimatePresence mode="wait">
-            <Routes>
-              <Route path="/" element={<Home user={user} />} />
-              <Route path="/admin" element={isAdmin ? <Admin /> : <Home user={user} />} />
-              <Route path="/dashboard" element={(user && !isAdmin) ? <SellerDashboard user={user} isAdmin={isAdmin} isSeller={isSeller} /> : <Home user={user} />} />
-              <Route path="/wishlist" element={<Wishlist user={user} />} />
-              <Route path="/orders" element={<Orders user={user} />} />
-              <Route path="/ebook/:id" element={<ProductDetail user={user} isAdmin={isAdmin} isSeller={isSeller} />} />
-              <Route path="/profile" element={<ProfilePage user={user} />} />
-            </Routes>
-          </AnimatePresence>
-        </main>
-        <GlobalChat user={user} />
-        <Toaster position="top-center" />
-      </div>
+      <BugHunter>
+        <div className="min-h-screen bg-zinc-50 font-sans text-zinc-950 flex flex-col">
+          <Navbar user={user} isAdmin={isAdmin} isSeller={isSeller} hasOrders={hasOrders} />
+          <main className="container mx-auto px-4 py-8 flex-1">
+            <AnimatePresence mode="wait">
+              <Routes>
+                <Route path="/" element={<Home user={user} />} />
+                <Route path="/admin" element={isAdmin ? <Admin /> : <Home user={user} />} />
+                <Route path="/dashboard" element={(user && !isAdmin) ? <SellerDashboard user={user} isAdmin={isAdmin} isSeller={isSeller} /> : <Home user={user} />} />
+                <Route path="/wishlist" element={<Wishlist user={user} />} />
+                <Route path="/orders" element={<Orders user={user} />} />
+                <Route path="/about" element={<About />} />
+                <Route path="/help" element={<Help />} />
+                <Route path="/ebook/:id" element={<ProductDetail user={user} isAdmin={isAdmin} isSeller={isSeller} />} />
+                <Route path="/profile" element={<ProfilePage user={user} />} />
+              </Routes>
+            </AnimatePresence>
+          </main>
+          <footer className="mt-auto border-t border-zinc-200 bg-white py-12">
+            <div className="container mx-auto px-4">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+                <div className="space-y-4">
+                  <Link to="/" className="flex items-center gap-2">
+                    <BookOpen className="w-6 h-6 text-orange-600" />
+                    <span className="text-xl font-black italic tracking-tighter">PUSTAK</span>
+                  </Link>
+                  <p className="text-sm font-medium text-zinc-500 leading-relaxed italic">
+                    Premium digital assets for the modern intellectual. Dominate your field with curated knowledge.
+                  </p>
+                </div>
+                <div className="space-y-4">
+                  <h4 className="text-xs font-black uppercase tracking-widest text-zinc-900 italic">Company</h4>
+                  <ul className="space-y-2">
+                    <li><Link to="/about" className="text-sm font-bold text-zinc-500 hover:text-orange-600 transition-colors flex items-center gap-2 italic uppercase tracking-tight"><Info className="w-3.5 h-3.5" /> About Us</Link></li>
+                    <li><Link to="/help" className="text-sm font-bold text-zinc-500 hover:text-orange-600 transition-colors flex items-center gap-2 italic uppercase tracking-tight"><HelpCircle className="w-3.5 h-3.5" /> Help Center</Link></li>
+                  </ul>
+                </div>
+                <div className="space-y-4">
+                  <h4 className="text-xs font-black uppercase tracking-widest text-zinc-900 italic">Support</h4>
+                  <ul className="space-y-2">
+                    <li><a href="mailto:support@pustak.com" className="text-sm font-bold text-zinc-500 hover:text-orange-600 transition-colors italic uppercase tracking-tight">Email Support</a></li>
+                    <li><a href="#" className="text-sm font-bold text-zinc-500 hover:text-orange-600 transition-colors italic uppercase tracking-tight">Terms of Service</a></li>
+                  </ul>
+                </div>
+                <div className="space-y-4">
+                  <h4 className="text-xs font-black uppercase tracking-widest text-zinc-900 italic">Social</h4>
+                  <div className="flex gap-4">
+                    <a href="#" className="w-8 h-8 rounded-lg bg-zinc-100 flex items-center justify-center text-zinc-400 hover:bg-red-50 hover:text-red-600 transition-all"><Youtube className="w-4 h-4" /></a>
+                    <a href="#" className="w-8 h-8 rounded-lg bg-zinc-100 flex items-center justify-center text-zinc-400 hover:bg-pink-50 hover:text-pink-600 transition-all"><Instagram className="w-4 h-4" /></a>
+                  </div>
+                </div>
+              </div>
+              <div className="mt-12 pt-8 border-t border-zinc-100 text-center">
+                <p className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] italic">© 2024 PUSTAK COMMAND • DOMINATE THE INTELLECT</p>
+              </div>
+            </div>
+          </footer>
+          <GlobalChat user={user} isAdmin={isAdmin} />
+          <AIHelper user={user} isAdmin={isAdmin} />
+          <Toaster position="top-center" />
+        </div>
+      </BugHunter>
     </Router>
   );
 }

@@ -22,7 +22,26 @@ export default function Home({ user }: { user: User | null }) {
   const [wishlist, setWishlist] = useState<string[]>([]);
   const [reviews, setReviews] = useState<Record<string, Review[]>>({});
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (search.trim().length > 1) {
+      const filtered = ebooks
+        .filter(e => 
+          e.title.toLowerCase().includes(search.toLowerCase()) || 
+          e.author.toLowerCase().includes(search.toLowerCase())
+        )
+        .slice(0, 5)
+        .map(e => e.title);
+      setSuggestions(Array.from(new Set(filtered)));
+      setShowSuggestions(true);
+    } else {
+      setSuggestions([]);
+      setShowSuggestions(false);
+    }
+  }, [search, ebooks]);
 
   useEffect(() => {
     if (user) {
@@ -100,9 +119,15 @@ export default function Home({ user }: { user: User | null }) {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'reviews' }, fetchReviews)
       .subscribe();
 
+    const bannersChannel = supabase
+      .channel('banners_home')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'home_banners' }, fetchBanners)
+      .subscribe();
+
     return () => {
       supabase.removeChannel(ebooksChannel);
       supabase.removeChannel(reviewsChannel);
+      supabase.removeChannel(bannersChannel);
     };
   }, []);
 
@@ -247,8 +272,11 @@ export default function Home({ user }: { user: User | null }) {
                 >
                   <Badge className="bg-orange-600 hover:bg-orange-600 text-white border-none px-4 py-1 mb-4 hidden sm:inline-flex">PREMIUM COLLECTION</Badge>
                   <h1 className="text-4xl sm:text-7xl font-black text-white tracking-tighter leading-[0.9]">
-                    READ. LEARN. <br />
-                    <span className="text-orange-500 italic">DOMINATE.</span>
+                    {banners.length > 0 && banners[currentBannerIndex].title ? (
+                      banners[currentBannerIndex].title
+                    ) : (
+                      <>READ. LEARN. <br /><span className="text-orange-500 italic">DOMINATE.</span></>
+                    )}
                   </h1>
                 </motion.div>
                 <motion.p 
@@ -257,8 +285,11 @@ export default function Home({ user }: { user: User | null }) {
                   transition={{ delay: 0.3 }}
                   className="text-zinc-300 text-sm sm:text-lg max-w-lg font-medium"
                 >
-                  Access thousands of premium ebooks from top authors. 
-                  Knowledge is the best investment you'll ever make.
+                  {banners.length > 0 && banners[currentBannerIndex].subtitle ? (
+                    banners[currentBannerIndex].subtitle
+                  ) : (
+                    "Access thousands of premium ebooks from top authors. Knowledge is the best investment you'll ever make."
+                  )}
                 </motion.p>
                 <motion.div
                   initial={{ y: 20, opacity: 0 }}
@@ -306,24 +337,50 @@ export default function Home({ user }: { user: User | null }) {
       </section>
 
       {/* Filters */}
-      <div id="search-section" className="flex flex-col sm:flex-row gap-4 items-center justify-between bg-white p-4 rounded-2xl border border-zinc-200 shadow-sm">
+      <div id="search-section" className="flex flex-col sm:flex-row gap-4 items-center justify-between bg-white p-2 sm:p-4 rounded-2xl border border-zinc-200 shadow-sm relative z-40">
         <div className="relative w-full sm:w-96">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 pointer-events-none" />
           <Input 
             placeholder="Search by title or author..." 
-            className="pl-10 bg-zinc-50 border-zinc-200"
+            className="pl-10 bg-zinc-50 border-zinc-200 h-10 sm:h-12 text-sm"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
+            onFocus={() => setShowSuggestions(suggestions.length > 0)}
           />
+          
+          <AnimatePresence>
+            {showSuggestions && suggestions.length > 0 && (
+              <motion.div 
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 10 }}
+                className="absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl border border-zinc-100 shadow-2xl overflow-hidden z-50 py-2"
+              >
+                {suggestions.map((s, i) => (
+                  <button
+                    key={i}
+                    onClick={() => {
+                      setSearch(s);
+                      setShowSuggestions(false);
+                    }}
+                    className="w-full text-left px-4 py-3 hover:bg-zinc-50 text-sm font-bold text-zinc-900 flex items-center gap-3 transition-colors"
+                  >
+                    <Search className="w-3.5 h-3.5 text-zinc-400" />
+                    {s}
+                  </button>
+                ))}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
-        <div className="flex gap-2 overflow-x-auto w-full sm:w-auto pb-2 sm:pb-0">
+        <div className="flex gap-2 overflow-x-auto w-full sm:w-auto pb-2 sm:pb-0 scrollbar-hide no-scrollbar">
           {categories.map(c => (
             <Button 
               key={c}
               variant={category === c ? "default" : "outline"}
               size="sm"
               onClick={() => setCategory(c)}
-              className={category === c ? "bg-zinc-900" : "text-zinc-600"}
+              className={`${category === c ? "bg-zinc-900" : "text-zinc-600"} whitespace-nowrap h-8 sm:h-10 px-4 rounded-lg font-bold text-[10px] sm:text-xs uppercase tracking-widest`}
             >
               {c}
             </Button>
@@ -352,7 +409,7 @@ export default function Home({ user }: { user: User | null }) {
       )}
 
       {/* Ebook Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-6">
         {filteredEbooks.map((ebook) => (
           <motion.div
             key={ebook.id}
@@ -361,7 +418,7 @@ export default function Home({ user }: { user: User | null }) {
             animate={{ opacity: 1, y: 0 }}
             className="group"
           >
-            <Card className="overflow-hidden border-zinc-200 hover:shadow-xl transition-all duration-300 rounded-2xl bg-white flex flex-col h-full cursor-pointer" onClick={() => navigate(`/ebook/${ebook.id}`)}>
+            <Card className="overflow-hidden border-zinc-200 hover:shadow-xl transition-all duration-300 rounded-[1.5rem] bg-white flex flex-col h-full cursor-pointer relative" onClick={() => navigate(`/ebook/${ebook.id}`)}>
               <div className="relative aspect-[3/4] overflow-hidden block">
                 {ebook.cover_url && (
                   <img 
@@ -371,88 +428,50 @@ export default function Home({ user }: { user: User | null }) {
                     referrerPolicy="no-referrer"
                   />
                 )}
-                <div className="absolute top-3 right-3 z-10">
+                <div className="absolute top-2 right-2 sm:top-3 sm:right-3 z-10">
                   <Button 
                     variant="secondary" 
                     size="icon" 
-                    className={`rounded-full shadow-lg ${wishlist.includes(ebook.id) ? 'text-red-500' : 'text-zinc-400'}`}
+                    className={`rounded-full h-8 w-8 sm:h-10 sm:w-10 shadow-lg ${wishlist.includes(ebook.id) ? 'text-red-500' : 'text-zinc-400'}`}
                     onClick={(e) => {
                       e.stopPropagation();
                       e.preventDefault();
                       toggleWishlist(ebook.id);
                     }}
                   >
-                    <Heart className={`w-5 h-5 ${wishlist.includes(ebook.id) ? 'fill-current' : ''}`} />
+                    <Heart className={`w-3.5 h-3.5 sm:w-5 h-5 ${wishlist.includes(ebook.id) ? 'fill-current' : ''}`} />
                   </Button>
                 </div>
-                <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 to-transparent sm:translate-y-full sm:group-hover:translate-y-0 transition-transform duration-300 flex gap-2 z-10">
-                  <Dialog>
-                    <DialogTrigger asChild>
-                      <Button 
-                        variant="secondary" 
-                        size="icon" 
-                        className="bg-white/20 backdrop-blur-md text-white border-white/20 hover:bg-white/40 absolute bottom-4 right-4"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <MessageSquare className="w-4 h-4" />
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent className="max-w-md" onClick={(e) => e.stopPropagation()}>
-                      <DialogHeader>
-                        <DialogTitle>Reviews for {ebook.title}</DialogTitle>
-                        <DialogDescription>
-                          See what other readers are saying about this ebook.
-                        </DialogDescription>
-                      </DialogHeader>
-                      <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2">
-                        {reviews[ebook.id]?.map((r, i) => (
-                          <div key={i} className="space-y-1 border-b border-zinc-100 pb-3 last:border-0">
-                            <div className="flex items-center justify-between">
-                              <span className="font-bold text-sm">{r.user_name}</span>
-                              <div className="flex items-center gap-0.5 text-orange-500">
-                                {[...Array(5)].map((_, idx) => (
-                                  <Star key={idx} className={`w-3 h-3 ${idx < r.rating ? 'fill-current' : 'text-zinc-200'}`} />
-                                ))}
-                              </div>
-                            </div>
-                            <p className="text-sm text-zinc-600 leading-relaxed">{r.comment}</p>
-                            <p className="text-[10px] text-zinc-400">{new Date(r.created_at).toLocaleDateString()}</p>
-                          </div>
-                        ))}
-                        {(!reviews[ebook.id] || reviews[ebook.id].length === 0) && (
-                          <p className="text-center py-10 text-zinc-500 text-sm">No reviews yet. Be the first to review!</p>
-                        )}
-                      </div>
-                    </DialogContent>
-                  </Dialog>
+                
+                <div className="absolute bottom-2 left-2 z-10">
+                   <Badge className="bg-black/60 backdrop-blur-md border-none text-[8px] sm:text-xs text-white">
+                      {ebook.category}
+                   </Badge>
                 </div>
               </div>
-              <div className="flex-1 flex flex-col">
-                <CardHeader className="p-4 pb-0">
-                  <CardTitle className="text-lg font-bold line-clamp-1 tracking-tight hover:text-orange-600 transition-colors">{ebook.title}</CardTitle>
-                  <p className="text-sm text-zinc-500 font-medium">by {ebook.author}</p>
-                </CardHeader>
-                <CardContent className="p-4 flex-1">
-                  <p className="text-xs text-zinc-600 line-clamp-2 leading-relaxed">
-                    {ebook.description}
-                  </p>
-                </CardContent>
-                <CardFooter className="p-4 pt-0">
-                  <div className="flex items-center justify-between w-full">
-                    <div className="flex items-center gap-1 text-orange-500">
-                      <Star className="w-4 h-4 fill-current" />
-                      <span className="text-sm font-bold text-zinc-900">
-                        {reviews[ebook.id]?.length > 0 
-                          ? (reviews[ebook.id].reduce((acc, r) => acc + r.rating, 0) / reviews[ebook.id].length).toFixed(1)
-                          : 'New'}
-                      </span>
-                      <span className="text-[10px] text-zinc-400 font-medium ml-1">
-                        ({reviews[ebook.id]?.length || 0})
-                      </span>
+              
+              <div className="flex-1 flex flex-col p-2 sm:p-4">
+                <div className="flex-1 space-y-1">
+                  <h3 className="text-xs sm:text-sm font-black italic uppercase leading-tight line-clamp-1 group-hover:text-orange-600 transition-colors tracking-tight">
+                    {ebook.title}
+                  </h3>
+                  <div className="flex items-center gap-1">
+                    <span className="text-[8px] sm:text-[10px] font-bold text-zinc-400 uppercase tracking-widest truncate max-w-[80px]">
+                      {ebook.author}
+                    </span>
+                    <div className="flex items-center text-orange-500 ml-auto">
+                      <Star className="w-2.5 h-2.5 fill-current" />
+                      <span className="text-[10px] font-black ml-0.5">{reviews[ebook.id]?.length > 0 ? (reviews[ebook.id].reduce((acc, r) => acc + r.rating, 0) / reviews[ebook.id].length).toFixed(1) : '5.0'}</span>
                     </div>
-                    <span className="text-xl font-black text-zinc-900">₹{ebook.price}</span>
                   </div>
-                </CardFooter>
+                </div>
+                
+                <div className="mt-2 pt-2 border-t border-zinc-50 flex items-center justify-between">
+                   <span className="text-sm sm:text-lg font-black tracking-tighter">₹{ebook.price}</span>
+                   <Button size="icon" className="h-7 w-7 sm:h-9 sm:w-9 bg-zinc-900 rounded-lg sm:rounded-xl">
+                      <ShoppingCart className="w-3.5 h-3.5 sm:w-4 h-4 text-white" />
+                   </Button>
+                </div>
               </div>
             </Card>
           </motion.div>

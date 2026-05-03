@@ -139,10 +139,16 @@ export default function SellerDashboard({ user, isAdmin, isSeller }: { user: Use
         .on('postgres_changes', { event: '*', schema: 'public', table: 'withdrawals', filter: `user_id=eq.${user.id}` }, fetchData)
         .subscribe();
 
+      const ebooksChannel = supabase
+        .channel('ebooks_seller' + Math.random())
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'ebooks' }, fetchData)
+        .subscribe();
+
       return () => {
         supabase.removeChannel(profileChannel);
         supabase.removeChannel(ordersChannel);
         supabase.removeChannel(withdrawalChannel);
+        supabase.removeChannel(ebooksChannel);
       };
     }
   }, [user]);
@@ -171,7 +177,7 @@ export default function SellerDashboard({ user, isAdmin, isSeller }: { user: Use
     .filter(w => w.status === 'success' || w.status === 'pending')
     .reduce((acc, w) => acc + w.amount, 0);
 
-  const totalBalance = (totalAffiliateEarnings + totalDirectEarnings) - totalWithdrawn;
+  const totalBalance = Math.max(0, (totalAffiliateEarnings + totalDirectEarnings) - totalWithdrawn);
   
   const pendingSales = allUniqueSales.filter(s => s.status === 'pending');
   const pendingAffiliateEarnings = pendingSales
@@ -420,7 +426,7 @@ export default function SellerDashboard({ user, isAdmin, isSeller }: { user: Use
                 <BadgeCheck className="w-4 h-4" />
                 Available Balance
               </p>
-              <h2 className="text-6xl font-black mb-2">₹{totalBalance.toLocaleString('en-IN')}</h2>
+              <h2 className="text-4xl sm:text-6xl font-black mb-2">₹{totalBalance.toLocaleString('en-IN')}</h2>
               <div className="flex flex-col gap-1">
                 <div className="flex items-center gap-2 text-blue-200 font-bold text-xs">
                   <span className="opacity-60 uppercase">Direct Sales:</span>
@@ -445,7 +451,7 @@ export default function SellerDashboard({ user, isAdmin, isSeller }: { user: Use
                 <Loader2 className="w-4 h-4 animate-spin" />
                 Pending Commission
               </p>
-              <h2 className="text-6xl font-black text-orange-600 mb-2">₹{pendingEarnings.toLocaleString('en-IN')}</h2>
+              <h2 className="text-4xl sm:text-6xl font-black text-orange-600 mb-2">₹{pendingEarnings.toLocaleString('en-IN')}</h2>
               <div className="flex items-center gap-4">
                 <p className="text-sm font-bold text-zinc-400">
                   {pendingEarningsCount} referral sales awaiting verification

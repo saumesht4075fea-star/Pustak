@@ -178,8 +178,21 @@ export default function Admin() {
 
   useEffect(() => {
     fetchData();
-    const sub = supabase.channel('admin_all').on('postgres_changes', { event: '*', schema: 'public' }, fetchData).subscribe();
-    return () => { supabase.removeChannel(sub); };
+    
+    // Explicit subscriptions for key tables to ensure real-time updates
+    const ebooksSub = supabase.channel('admin_ebooks').on('postgres_changes', { event: '*', schema: 'public', table: 'ebooks' }, fetchData).subscribe();
+    const ordersSub = supabase.channel('admin_orders').on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, fetchData).subscribe();
+    const withdrawalsSub = supabase.channel('admin_withdrawals').on('postgres_changes', { event: '*', schema: 'public', table: 'withdrawals' }, fetchData).subscribe();
+    const profilesSub = supabase.channel('admin_profiles').on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, fetchData).subscribe();
+    const bannersSub = supabase.channel('admin_banners').on('postgres_changes', { event: '*', schema: 'public', table: 'home_banners' }, fetchData).subscribe();
+
+    return () => { 
+      supabase.removeChannel(ebooksSub);
+      supabase.removeChannel(ordersSub);
+      supabase.removeChannel(withdrawalsSub);
+      supabase.removeChannel(profilesSub);
+      supabase.removeChannel(bannersSub);
+    };
   }, []);
 
   const handleAddEbook = async (e: React.FormEvent) => {
@@ -301,7 +314,7 @@ export default function Admin() {
     }
   };
 
-  const handleAddBanner = async (file: File) => {
+  const handleAddBanner = async (file: File, title: string, subtitle: string) => {
     setIsUploadingBanner(true);
     const toastId = toast.loading('Uploading banner image...');
     try {
@@ -317,14 +330,30 @@ export default function Admin() {
 
       const { data: { publicUrl } } = supabase.storage.from('ebooks').getPublicUrl(filePath);
 
+      // Attempt to insert with all fields
       const { error: dbError } = await supabase.from('home_banners').insert({
         image_url: publicUrl,
+        title: title || 'READ. LEARN. DOMINATE.',
+        subtitle: subtitle || 'Access thousands of premium ebooks from top authors.',
         created_at: new Date().toISOString()
       });
 
-      if (dbError) throw dbError;
+      // If it fails because of missing columns, retry with just image_url
+      if (dbError) {
+        if (dbError.message.includes('column') || dbError.code === '42703') {
+          const { error: retryError } = await supabase.from('home_banners').insert({
+            image_url: publicUrl,
+            created_at: new Date().toISOString()
+          });
+          if (retryError) throw retryError;
+          toast.success('Banner added! Note: Title/Subtitle were skipped because columns are missing in your database.', { id: toastId, duration: 5000 });
+        } else {
+          throw dbError;
+        }
+      } else {
+        toast.success('Banner added successfully!', { id: toastId });
+      }
       
-      toast.success('Banner added successfully!', { id: toastId });
       fetchData();
     } catch (err: any) {
       toast.error(err.message, { id: toastId });
@@ -349,8 +378,9 @@ export default function Admin() {
     try {
       const { error } = await supabase.from('ebooks').update({ is_deleted: true }).eq('id', deletingId);
       if (error) throw error;
-      toast.success('Ebook removed from store (Sales report preserved)');
-      setIsDeleting(false);
+      toast.success('Product archived. Sales data preserved.');
+      setDeletingId(null);
+      fetchData();
     } catch (error: any) {
        toast.error(error.message);
     }
@@ -918,25 +948,35 @@ export default function Admin() {
       {activeTab === 'products' && (
         <div className="space-y-6">
            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-              {ebooks.filter(e => !e.is_deleted).map(ebook => (
-                <Card key={ebook.id} className="border-zinc-200 overflow-hidden group">
+              {ebooks.map(ebook => (
+                <Card key={ebook.id} className={`border-zinc-200 overflow-hidden group ${ebook.is_deleted ? 'opacity-70 bg-zinc-50' : ''}`}>
                    <div className="relative aspect-[3/4]">
-                      {ebook.cover_url && <img src={ebook.cover_url} className="w-full h-full object-cover" />}
+                      {ebook.cover_url && <img src={ebook.cover_url} className={`w-full h-full object-cover ${ebook.is_deleted ? 'grayscale' : ''}`} />}
                       <div className="absolute top-2 right-2 flex gap-1">
-                        <Button size="icon" variant="secondary" className="w-8 h-8 rounded-full" onClick={() => startEdit(ebook)}><Pencil className="w-3.5 h-3.5" /></Button>
-                        <Button size="icon" variant="destructive" className="w-8 h-8 rounded-full" onClick={() => { setDeletingId(ebook.id); setIsDeleting(true); }}><Trash2 className="w-3.5 h-3.5" /></Button>
+                        {!ebook.is_deleted ? (
+                          <>
+                            <Button size="icon" variant="secondary" className="w-8 h-8 rounded-full shadow-lg" onClick={() => startEdit(ebook)}><Pencil className="w-3.5 h-3.5" /></Button>
+                            <Button size="icon" variant="destructive" className="w-8 h-8 rounded-full shadow-lg" onClick={() => { setDeletingId(ebook.id); setIsDeleting(true); }}><Trash2 className="w-3.5 h-3.5" /></Button>
+                          </>
+                        ) : (
+                          <Badge className="bg-zinc-900 border-none shadow-lg">ARCHIVED</Badge>
+                        )}
                       </div>
                    </div>
                    <CardContent className="p-4">
-                      <Badge variant="outline" className="text-[8px] mb-2">{ebook.category}</Badge>
+                      <div className="flex items-center justify-between mb-2">
+                        <Badge variant="outline" className="text-[8px]">{ebook.category}</Badge>
+                        {ebook.is_deleted && <span className="text-[8px] font-black text-red-500 uppercase tracking-widest">Store Hidden</span>}
+                      </div>
                       <h4 className="font-black text-sm text-zinc-900 line-clamp-1">{ebook.title}</h4>
                       <p className="text-[10px] text-zinc-500 mb-4">Price: ₹{ebook.price}</p>
                       <div className="flex gap-2">
                         <Button 
-                          className={`flex-1 text-[9px] font-black h-8 rounded-lg ${ebook.is_verified ? 'bg-zinc-100 text-zinc-500' : 'bg-green-600 text-white'}`}
-                          onClick={() => handleVerifyEbook(ebook.id, !ebook.is_verified)}
+                          className={`flex-1 text-[9px] font-black h-8 rounded-lg ${ebook.is_deleted ? 'bg-zinc-200 text-zinc-400 cursor-not-allowed' : (ebook.is_verified ? 'bg-zinc-100 text-zinc-500' : 'bg-green-600 text-white')}`}
+                          onClick={() => !ebook.is_deleted && handleVerifyEbook(ebook.id, !ebook.is_verified)}
+                          disabled={ebook.is_deleted}
                         >
-                          {ebook.is_verified ? 'REVOKE VERIFICATION' : 'VERIFY PRODUCT'}
+                          {ebook.is_deleted ? 'ARCHIVED PRODUCT' : (ebook.is_verified ? 'REVOKE VERIFICATION' : 'VERIFY PRODUCT')}
                         </Button>
                       </div>
                    </CardContent>
@@ -961,42 +1001,66 @@ export default function Admin() {
                <CardDescription className="text-zinc-400 font-bold uppercase tracking-widest text-[10px]">Upload professional banners for the homepage slider</CardDescription>
              </CardHeader>
              <CardContent className="p-8">
-               <div className="bg-zinc-50 p-8 rounded-[2rem] border-2 border-dashed border-zinc-200 text-center space-y-4 mb-8">
-                  <div className="w-16 h-16 bg-white rounded-2xl shadow-sm flex items-center justify-center mx-auto">
-                    <Upload className="w-8 h-8 text-zinc-400" />
-                  </div>
-                  <div className="space-y-1">
-                    <h3 className="text-lg font-black text-zinc-900">Upload New Banner</h3>
-                    <p className="text-xs font-bold text-zinc-500">Recommended size: 1920x800px or similar ratio</p>
-                  </div>
-                  <Button 
-                    variant="default" 
-                    className="bg-orange-600 hover:bg-orange-700 text-white font-black rounded-xl h-12 px-8 relative overflow-hidden"
+               <form 
+                 className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8 bg-zinc-50 p-6 rounded-[2rem] border border-zinc-100"
+                 onSubmit={(e) => {
+                   e.preventDefault();
+                   const form = e.target as HTMLFormElement;
+                   const file = (form.elements.namedItem('banner-file') as HTMLInputElement).files?.[0];
+                   const title = (form.elements.namedItem('banner-title') as HTMLInputElement).value;
+                   const subtitle = (form.elements.namedItem('banner-subtitle') as HTMLInputElement).value;
+                   
+                   if (file) {
+                     handleAddBanner(file, title, subtitle);
+                     form.reset();
+                   } else {
+                     toast.error('Please select an image');
+                   }
+                 }}
+               >
+                 <div className="md:col-span-1 space-y-1">
+                    <Label className="text-[10px] font-black uppercase text-zinc-400">Banner Image</Label>
+                    <div className="relative h-12">
+                      <Input id="banner-file" type="file" accept="image/*" className="h-full rounded-xl opacity-0 absolute inset-0 z-10 cursor-pointer" required />
+                      <div className="h-full w-full border-2 border-dashed border-zinc-200 rounded-xl flex items-center justify-center text-[10px] font-bold text-zinc-400 hover:bg-white transition-colors">
+                        SELECT IMAGE
+                      </div>
+                    </div>
+                 </div>
+                 <div className="md:col-span-1 space-y-1">
+                    <Label className="text-[10px] font-black uppercase text-zinc-400">Title (Bold Text)</Label>
+                    <Input id="banner-title" placeholder="DOMINATE THE MARKET" className="h-12 rounded-xl" />
+                 </div>
+                 <div className="md:col-span-1 space-y-1">
+                    <Label className="text-[10px] font-black uppercase text-zinc-400">Subtitle (Small Text)</Label>
+                    <Input id="banner-subtitle" placeholder="Get 20% off on all new releases" className="h-12 rounded-xl" />
+                 </div>
+                 <div className="flex items-end">
+                   <Button 
+                    type="submit" 
                     disabled={isUploadingBanner}
-                  >
-                    {isUploadingBanner ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : 'SELECT BANNER IMAGE'}
-                    <input 
-                      type="file" 
-                      className="absolute inset-0 opacity-0 cursor-pointer" 
-                      accept="image/*" 
-                      onChange={(e) => e.target.files && handleAddBanner(e.target.files[0])}
-                    />
-                  </Button>
-               </div>
+                    className="w-full h-12 bg-orange-600 hover:bg-orange-700 text-white font-black rounded-xl"
+                   >
+                     {isUploadingBanner ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : 'ADD BANNER'}
+                   </Button>
+                 </div>
+               </form>
 
                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                  {banners.map(banner => (
                    <div key={banner.id} className="group relative aspect-video bg-zinc-100 rounded-2xl overflow-hidden border border-zinc-200 shadow-sm transition-all hover:shadow-xl">
                       <img src={banner.image_url} className="w-full h-full object-cover" />
-                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center p-4 text-center">
+                        <h4 className="text-white font-black text-sm mb-1 uppercase tracking-tighter">{banner.title || 'No Title'}</h4>
+                        <p className="text-zinc-300 text-[10px] font-bold mb-4">{banner.subtitle || 'No Subtitle'}</p>
                         <Button 
                           variant="destructive" 
                           size="sm" 
-                          className="font-black rounded-lg"
+                          className="font-black rounded-lg h-8 text-[10px]"
                           onClick={() => handleDeleteBanner(banner.id)}
                         >
-                          <Trash2 className="w-4 h-4 mr-2" />
-                          REMOVE BANNER
+                          <Trash2 className="w-3 h-3 mr-2" />
+                          REMOVE
                         </Button>
                       </div>
                    </div>
@@ -1051,7 +1115,7 @@ export default function Admin() {
                 
                 const calculatedAffiliate = sellerAffiliateSales.reduce((acc, o) => acc + (o.commission_amount || o.ebook?.commission_amount || 0), 0);
                 const totalWithdrawn = sellerWithdrawals.reduce((acc, w) => acc + w.amount, 0);
-                const currentBalance = calculatedAffiliate - totalWithdrawn;
+                const currentBalance = Math.max(0, calculatedAffiliate - totalWithdrawn);
 
                 return (
                   <Card key={seller.uid} className="border-zinc-200 shadow-sm hover:shadow-md transition-shadow">
@@ -1109,7 +1173,7 @@ export default function Admin() {
             
             const earned = userReferrals.reduce((acc, o) => acc + (o.commission_amount || o.ebook?.commission_amount || 0), 0);
             const paid = userWiths.filter(w => w.status === 'success').reduce((acc, w) => acc + w.amount, 0);
-            const bal = earned - userWiths.reduce((acc, w) => acc + w.amount, 0);
+            const bal = Math.max(0, earned - userWiths.reduce((acc, w) => acc + w.amount, 0));
 
             return (
               <div className="space-y-0">
