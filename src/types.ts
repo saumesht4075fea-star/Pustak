@@ -6,7 +6,6 @@ export interface Ebook {
   price: number;
   commission_amount: number;
   cover_url: string;
-  images?: string[];
   file_url: string;
   category: string;
   cosmofeed_url: string;

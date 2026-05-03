@@ -2,7 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { User } from '@supabase/supabase-js';
 import { motion } from 'motion/react';
-import { ShoppingBag, Download, Star, MessageSquare, CheckCircle2, XCircle, BookOpen, Maximize2, X, Loader2, ExternalLink, Share2, Copy, BadgeCheck, TrendingUp } from 'lucide-react';
+import { pdfjs, Document, Page } from 'react-pdf';
+import 'react-pdf/dist/Page/AnnotationLayer.css';
+import 'react-pdf/dist/Page/TextLayer.css';
+
+// Set up worker
+pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+
+import { ShoppingBag, Download, Star, MessageSquare, CheckCircle2, XCircle, BookOpen, Maximize2, X, Loader2, ExternalLink, Share2, Copy, BadgeCheck, TrendingUp, ChevronLeft, ChevronRight, ZoomIn, ZoomOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -23,6 +30,15 @@ export default function Orders({ user }: { user: User | null }) {
   const [readingBlobUrl, setReadingBlobUrl] = useState<string | null>(null);
   const [rating, setRating] = useState(5);
   const [comment, setComment] = useState('');
+  const [numPages, setNumPages] = useState<number | null>(null);
+  const [pageNumber, setPageNumber] = useState(1);
+  const [scale, setScale] = useState(1.0);
+  const [isReaderLoading, setIsReaderLoading] = useState(true);
+
+  function onDocumentLoadSuccess({ numPages }: { numPages: number }) {
+    setNumPages(numPages);
+    setIsReaderLoading(false);
+  }
 
   // Convert base64 to Blob URL for better stability in Chrome
   useEffect(() => {
@@ -61,7 +77,10 @@ export default function Orders({ user }: { user: User | null }) {
     const fetchOrders = async () => {
       const { data: ordersData, error: ordersError } = await supabase
         .from('orders')
-        .select('*, ebook:ebooks(*)')
+        .select(`
+          *,
+          ebook:ebooks(id, title, author, description, price, commission_amount, cover_url, file_url, category, cosmofeed_url, seller_id, is_verified, is_deleted, created_at)
+        `)
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });
 
@@ -217,12 +236,14 @@ export default function Orders({ user }: { user: User | null }) {
                           Read Now
                         </Button>
 
-                        <Button variant="outline" className="gap-2 border-zinc-200 text-zinc-600 hover:bg-zinc-50" asChild>
-                          <a href={order.ebook?.file_url} target="_blank" rel="noopener noreferrer">
-                            <Download className="w-4 h-4" />
-                            Download
-                          </a>
-                        </Button>
+                        {profile?.role === 'admin' && (
+                          <Button variant="outline" className="gap-2 border-zinc-200 text-zinc-600 hover:bg-zinc-50" asChild>
+                            <a href={order.ebook?.file_url} target="_blank" rel="noopener noreferrer">
+                              <Download className="w-4 h-4" />
+                              Download
+                            </a>
+                          </Button>
+                        )}
                       </>
                     ) : order.status === 'pending' ? (
                       <div className="flex items-center gap-2 px-4 py-2 bg-yellow-50 text-yellow-700 rounded-xl border border-yellow-100 italic text-sm font-medium">
@@ -312,11 +333,13 @@ export default function Orders({ user }: { user: User | null }) {
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <Button variant="ghost" size="icon" className="text-zinc-400 hover:text-white hover:bg-zinc-800" asChild>
-                  <a href={readingEbook?.file_url} download target="_blank" rel="noopener noreferrer">
-                    <Download className="w-5 h-5" />
-                  </a>
-                </Button>
+                {profile?.role === 'admin' && (
+                  <Button variant="ghost" size="icon" className="text-zinc-400 hover:text-white hover:bg-zinc-800" asChild>
+                    <a href={readingEbook?.file_url} download target="_blank" rel="noopener noreferrer">
+                      <Download className="w-5 h-5" />
+                    </a>
+                  </Button>
+                )}
                 <DialogClose asChild>
                   <Button variant="ghost" size="icon" className="text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-full">
                     <X className="w-6 h-6" />
@@ -325,47 +348,118 @@ export default function Orders({ user }: { user: User | null }) {
               </div>
             </div>
             
-            <div className="flex-grow bg-white relative flex flex-col">
+            <div className="flex-grow bg-zinc-100 relative overflow-hidden flex flex-col">
               {readingBlobUrl ? (
-                <div className="w-full h-full flex flex-col" key={readingEbook?.id}>
-                  <div className="bg-zinc-100 p-2 flex justify-center gap-4 border-b border-zinc-200">
+                <div className="flex flex-col h-full">
+                  {/* Reader Controls */}
+                  <div className="bg-white border-b border-zinc-200 p-2 flex items-center justify-between px-4 shrink-0">
+                    <div className="flex items-center gap-2">
+                       <Button 
+                         variant="ghost" 
+                         size="sm" 
+                         disabled={pageNumber <= 1}
+                         onClick={() => setPageNumber(prev => Math.max(prev - 1, 1))}
+                         className="h-8 w-8 p-0"
+                       >
+                         <ChevronLeft className="w-4 h-4" />
+                       </Button>
+                       <span className="text-xs font-bold text-zinc-600">
+                         Page {pageNumber} of {numPages || '...'}
+                       </span>
+                       <Button 
+                         variant="ghost" 
+                         size="sm" 
+                         disabled={numPages ? pageNumber >= numPages : false}
+                         onClick={() => setPageNumber(prev => numPages ? Math.min(prev + 1, numPages) : prev)}
+                         className="h-8 w-8 p-0"
+                       >
+                         <ChevronRight className="w-4 h-4" />
+                       </Button>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                       <Button variant="ghost" size="sm" onClick={() => setScale(s => Math.max(s - 0.1, 0.5))} className="h-8 w-8 p-0">
+                         <ZoomOut className="w-4 h-4" />
+                       </Button>
+                       <span className="text-[10px] font-bold text-zinc-400 w-8 text-center">{Math.round(scale * 100)}%</span>
+                       <Button variant="ghost" size="sm" onClick={() => setScale(s => Math.min(s + 0.1, 2.0))} className="h-8 w-8 p-0">
+                         <ZoomIn className="w-4 h-4" />
+                       </Button>
+                    </div>
+
                     <Button 
                       variant="outline" 
                       size="sm" 
-                      className="text-[10px] h-7 font-black border-red-200 text-red-600 hover:bg-red-50 gap-2"
+                      className="text-[10px] h-7 font-black border-red-200 text-red-600 hover:bg-red-50"
                       onClick={() => {
+                        setPageNumber(1);
                         const currentRef = readingBlobUrl;
                         setReadingBlobUrl(null);
                         setTimeout(() => setReadingBlobUrl(currentRef), 100);
                       }}
                     >
-                      RELOAD VIEWER
-                    </Button>
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      className="text-[10px] h-7 font-black border-orange-200 text-orange-600 hover:bg-orange-50 gap-2"
-                      asChild
-                    >
-                      <a href={readingBlobUrl} target="_blank" rel="noopener noreferrer">
-                        <ExternalLink className="w-3 h-3" />
-                        FIX BLOCKED VIEW / READ FULLSCREEN
-                      </a>
+                      RESET
                     </Button>
                   </div>
-                  <div className="flex-grow relative">
-                    <iframe 
-                      src={`${readingBlobUrl}#view=FitH&toolbar=0`} 
-                      className="w-full h-full border-none"
-                      title={readingEbook?.title}
-                    />
-                    {/* Floating Fix for Chrome Blocks if Iframe is empty */}
-                    <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none opacity-0 hover:opacity-100 transition-opacity bg-white/50 backdrop-blur-sm">
-                       <p className="text-zinc-600 font-bold text-sm mb-2">View not working?</p>
-                       <Button variant="default" className="pointer-events-auto bg-orange-600" asChild>
-                         <a href={readingBlobUrl} target="_blank" rel="noopener noreferrer">Open Securely</a>
-                       </Button>
-                    </div>
+
+                  {/* Book Viewport */}
+                  <div className="flex-grow overflow-auto bg-zinc-200 p-4 flex justify-center items-start">
+                    <motion.div 
+                      key={pageNumber}
+                      initial={{ opacity: 0, rotateY: -30, x: 20 }}
+                      animate={{ opacity: 1, rotateY: 0, x: 0 }}
+                      transition={{ type: "spring", damping: 20, stiffness: 100 }}
+                      className="shadow-2xl bg-white origin-left"
+                      style={{ perspective: "1000px" }}
+                    >
+                      <Document
+                        file={readingBlobUrl}
+                        onLoadSuccess={onDocumentLoadSuccess}
+                        loading={
+                          <div className="h-[60vh] w-[400px] flex items-center justify-center bg-white">
+                            <Loader2 className="w-8 h-8 animate-spin text-orange-600" />
+                          </div>
+                        }
+                        error={
+                          <div className="h-[60vh] w-[400px] flex flex-col items-center justify-center bg-white p-8 text-center">
+                            <XCircle className="w-12 h-12 text-red-500 mb-4" />
+                            <p className="font-bold text-zinc-900">Failed to load PDF</p>
+                            <p className="text-sm text-zinc-500">Please try downloading the file instead.</p>
+                          </div>
+                        }
+                      >
+                        <Page 
+                          pageNumber={pageNumber} 
+                          scale={scale} 
+                          renderAnnotationLayer={false}
+                          renderTextLayer={false}
+                          className="max-w-full"
+                          loading={<div className="h-[60vh] w-[400px] bg-white animate-pulse" />}
+                        />
+                      </Document>
+                    </motion.div>
+                  </div>
+
+                  {/* Desktop Navigation Helper */}
+                  <div className="absolute inset-y-0 left-0 w-20 flex items-center justify-center group pointer-events-none">
+                     <Button 
+                       variant="ghost" 
+                       className="pointer-events-auto h-20 w-12 bg-black/5 opacity-0 group-hover:opacity-100 rounded-r-3xl rounded-l-none"
+                       onClick={() => setPageNumber(prev => Math.max(prev - 1, 1))}
+                       disabled={pageNumber <= 1}
+                     >
+                       <ChevronLeft className="w-8 h-8 text-zinc-400" />
+                     </Button>
+                  </div>
+                  <div className="absolute inset-y-0 right-0 w-20 flex items-center justify-center group pointer-events-none">
+                     <Button 
+                       variant="ghost" 
+                       className="pointer-events-auto h-20 w-12 bg-black/5 opacity-0 group-hover:opacity-100 rounded-l-3xl rounded-r-none"
+                       onClick={() => setPageNumber(prev => numPages ? Math.min(prev + 1, numPages) : prev)}
+                       disabled={numPages ? pageNumber >= numPages : false}
+                     >
+                       <ChevronRight className="w-8 h-8 text-zinc-400" />
+                     </Button>
                   </div>
                 </div>
               ) : (

@@ -4,6 +4,8 @@ import path from "path";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 import crypto from "crypto";
+import archiver from "archiver";
+import fs from "fs";
 
 dotenv.config();
 
@@ -53,6 +55,41 @@ async function startServer() {
     } catch (error: any) {
       res.status(500).json({ text: "I'm having a bit of trouble reflecting. Try asking about orders or selling!" });
     }
+  });
+
+  app.get("/api/admin/export", async (req, res) => {
+    // In a real app, you'd verify admin status here via JWT/Supabase
+    // For now, we'll allow it but you should protect this route with a secret or token in production
+    
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', 'attachment; filename=pustak-source.zip');
+
+    const archive = archiver('zip', {
+      zlib: { level: 9 }
+    });
+
+    archive.on('error', (err) => {
+      res.status(500).send({ error: err.message });
+    });
+
+    archive.pipe(res);
+
+    // Add all files except excluded ones
+    archive.glob('**/*', {
+      cwd: process.cwd(),
+      ignore: [
+        'node_modules/**',
+        'dist/**',
+        '.git/**',
+        '.env',
+        '*.zip',
+        '.cache/**',
+        '.next/**',
+        'package-lock.json'
+      ]
+    });
+
+    await archive.finalize();
   });
 
   // Default to production if NODE_ENV is set or if dist exists

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { User } from '@supabase/supabase-js';
 import { motion } from 'motion/react';
-import { Heart, ShoppingCart, Star, Search, Filter, MessageSquare, Download, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Heart, ShoppingCart, Star, Search, Filter, MessageSquare, Download, ChevronLeft, ChevronRight, Smartphone } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -77,7 +77,7 @@ export default function Home({ user }: { user: User | null }) {
     const fetchEbooks = async () => {
       const { data } = await supabase
         .from('ebooks')
-        .select('*')
+        .select('id, title, author, description, price, commission_amount, cover_url, file_url, category, cosmofeed_url, seller_id, is_verified, is_deleted, created_at')
         .eq('is_deleted', false)
         .order('created_at', { ascending: false });
       if (data) setEbooks(data as Ebook[]);

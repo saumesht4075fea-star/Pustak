@@ -19,6 +19,6 @@ export async function getAIResponse(userMessage: string, chatHistory: { role: st
     return data.text;
   } catch (error) {
     console.error('AI Service Error:', error);
-    return "I'm sorry, I'm having a bit of trouble thinking right now. Please try again or contact support at support@pustak.com.";
+    return "I'm sorry, I'm having a bit of trouble thinking right now. Please try again or contact support at support@pustak.online.";
   }
 }

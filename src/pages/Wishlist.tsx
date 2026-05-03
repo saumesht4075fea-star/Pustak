@@ -27,7 +27,7 @@ export default function Wishlist({ user }: { user: User | null }) {
           user_id,
           ebook_id,
           created_at,
-          ebook:ebooks (*)
+          ebook:ebooks(id, title, author, description, price, commission_amount, cover_url, file_url, category, cosmofeed_url, seller_id, is_verified, is_deleted, created_at)
         `)
         .eq('user_id', user.id);
 

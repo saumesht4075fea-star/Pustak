@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { User as UserIcon, Mail, BadgeCheck, Shield, Calendar, Save, Loader2, LogOut } from 'lucide-react';
+import { User as UserIcon, Mail, BadgeCheck, Shield, Calendar, Save, Loader2, LogOut, Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { Profile as UserProfile } from '../types';
 
@@ -96,6 +96,33 @@ export default function Profile({ user }: { user: User | null }) {
       </header>
 
       <div className="grid grid-cols-1 gap-6 sm:gap-8">
+        {profile.role === 'admin' && (
+          <motion.div 
+            initial={{ opacity: 0, x: -20 }} 
+            animate={{ opacity: 1, x: 0 }}
+          >
+            <Card className="border-2 border-orange-600 bg-orange-50/50 rounded-[2rem] overflow-hidden">
+              <CardContent className="p-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-orange-600 rounded-2xl flex items-center justify-center">
+                    <Download className="w-6 h-6 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="font-black italic uppercase text-zinc-900 leading-tight">Admin: Export Source Code</h3>
+                    <p className="text-zinc-500 text-[10px] font-bold uppercase tracking-widest">Download full project ZIP archive</p>
+                  </div>
+                </div>
+                <Button 
+                  onClick={() => window.open('/api/admin/export', '_blank')}
+                  className="bg-orange-600 hover:bg-orange-700 text-white font-black italic uppercase tracking-widest text-xs h-12 px-8 rounded-xl shadow-lg shadow-orange-600/20"
+                >
+                  DOWNLOAD ZIP
+                </Button>
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
+
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
           <Card className="border-none shadow-2xl shadow-zinc-200/50 rounded-[2rem] sm:rounded-[2.5rem] overflow-hidden bg-white">
             <div className="h-24 sm:h-32 bg-gradient-to-r from-orange-500 to-orange-600" />

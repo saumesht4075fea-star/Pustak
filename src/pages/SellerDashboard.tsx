@@ -86,7 +86,7 @@ export default function SellerDashboard({ user, isAdmin, isSeller }: { user: Use
     // Fetch Direct Sales - Sales of ebooks OWNED by this user
     const { data: directData } = await supabase
       .from('orders')
-      .select('*, ebook:ebooks!inner(*), profiles(*)')
+      .select('*, ebook:ebooks!inner(id, title, author, description, price, commission_amount, cover_url, file_url, category, cosmofeed_url, seller_id, is_verified, is_deleted, created_at), profiles(*)')
       .eq('ebook.seller_id', user.id)
       .in('status', ['success', 'pending'])
       .order('created_at', { ascending: false });
@@ -95,7 +95,7 @@ export default function SellerDashboard({ user, isAdmin, isSeller }: { user: Use
     // Fetch user's own successful purchases to see codes
     const { data: ownOrders } = await supabase
       .from('orders')
-      .select('*, ebook:ebooks(*)').eq('user_id', user.id).eq('status', 'success');
+      .select('*, ebook:ebooks(id, title, author, description, price, commission_amount, cover_url, file_url, category, cosmofeed_url, seller_id, is_verified, is_deleted, created_at)').eq('user_id', user.id).eq('status', 'success');
     
     if (ownOrders) {
       setOwnPurchases(ownOrders as any);

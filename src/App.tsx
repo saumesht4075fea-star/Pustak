@@ -16,7 +16,7 @@ import Help from './pages/Help';
 import GlobalChat from './components/GlobalChat';
 import AIHelper from './components/AIHelper';
 import { BugHunter } from './components/BugHunter';
-import { BookOpen, Heart, ShoppingBag, User as UserIcon, Instagram, LogIn, LogOut, ShieldCheck, AlertTriangle, LayoutDashboard, UserCircle, Youtube, HelpCircle, Info } from 'lucide-react';
+import { BookOpen, Heart, ShoppingBag, User as UserIcon, Instagram, LogIn, LogOut, ShieldCheck, AlertTriangle, LayoutDashboard, UserCircle, Youtube, HelpCircle, Info, Smartphone } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Toaster } from '@/components/ui/sonner';
 import { toast } from 'sonner';
@@ -452,7 +452,7 @@ export default function App() {
                 <div className="space-y-4">
                   <h4 className="text-xs font-black uppercase tracking-widest text-zinc-900 italic">Support</h4>
                   <ul className="space-y-2">
-                    <li><a href="mailto:support@pustak.com" className="text-sm font-bold text-zinc-500 hover:text-orange-600 transition-colors italic uppercase tracking-tight">Email Support</a></li>
+                    <li><a href="mailto:support@pustak.online" className="text-sm font-bold text-zinc-500 hover:text-orange-600 transition-colors italic uppercase tracking-tight">Email Support</a></li>
                     <li><a href="#" className="text-sm font-bold text-zinc-500 hover:text-orange-600 transition-colors italic uppercase tracking-tight">Terms of Service</a></li>
                   </ul>
                 </div>

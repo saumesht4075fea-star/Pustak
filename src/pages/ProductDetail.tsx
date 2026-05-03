@@ -31,7 +31,7 @@ export default function ProductDetail({ user, isAdmin, isSeller }: { user: User 
   const [checkingPurchase, setCheckingPurchase] = useState(true);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
 
-  const images = ebook ? [ebook.cover_url, ...(ebook.images || [])] : [];
+  const images = ebook ? [ebook.cover_url] : [];
 
   const nextImage = () => {
     setCurrentImageIndex((prev) => (prev + 1) % images.length);
@@ -215,7 +215,7 @@ export default function ProductDetail({ user, isAdmin, isSeller }: { user: User 
     if (!id || !isSupabaseConfigured) return;
     const { data } = await supabase
       .from('ebooks')
-      .select('*')
+      .select('id, title, author, description, price, commission_amount, cover_url, file_url, category, cosmofeed_url, seller_id, is_verified, is_deleted, created_at')
       .eq('id', id)
       .single();
     
@@ -342,7 +342,7 @@ export default function ProductDetail({ user, isAdmin, isSeller }: { user: User 
   const openApp = (app: 'generic' | 'paytm' | 'phonepe' | 'gpay') => {
     if (!ebook) return;
     const YOUR_UPI_ID = "7417645286@slc"; 
-    const MERCHANT_NAME = "PUSTAK STORE";
+    const MERCHANT_NAME = "PUSTAK ONLINE";
     const params = `pa=${YOUR_UPI_ID}&pn=${encodeURIComponent(MERCHANT_NAME)}&am=${ebook.price}&cu=INR&tn=${encodeURIComponent('Purchase: ' + ebook.title)}`;
     
     let link = `upi://pay?${params}`;

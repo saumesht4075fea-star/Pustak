@@ -50,7 +50,7 @@ export default function Help() {
             </div>
             <h3 className="text-xl font-black italic uppercase">Email Support</h3>
             <p className="text-zinc-500 text-sm font-medium">Direct support for billing and technical issues.</p>
-            <p className="text-orange-600 font-bold text-sm">support@pustak.com</p>
+            <p className="text-orange-600 font-bold text-sm">support@pustak.online</p>
           </CardContent>
         </Card>
 

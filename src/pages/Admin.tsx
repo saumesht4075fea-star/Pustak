@@ -53,13 +53,10 @@ export default function Admin() {
     file_url: '',
     category: 'Fiction',
     cosmofeed_url: '',
-    seller_id: '',
-    images: []
+    seller_id: ''
   });
 
-  const [editFormData, setEditFormData] = useState<Partial<Ebook>>({
-    images: []
-  });
+  const [editFormData, setEditFormData] = useState<Partial<Ebook>>({});
 
   const parseClipboard = (text: string) => {
     setUtrClipboard(text);
@@ -147,13 +144,17 @@ export default function Admin() {
   const fetchData = async () => {
     const { data: ebooksData } = await supabase
       .from('ebooks')
-      .select('*')
+      .select('id, title, author, description, price, commission_amount, cover_url, file_url, category, cosmofeed_url, seller_id, is_verified, is_deleted, created_at')
       .order('created_at', { ascending: false });
     if (ebooksData) setEbooks(ebooksData as Ebook[]);
 
     const { data: ordersData } = await supabase
       .from('orders')
-      .select('*, ebook:ebooks(*), profiles(*)')
+      .select(`
+        *,
+        ebook:ebooks(id, title, author, description, price, commission_amount, cover_url, file_url, category, cosmofeed_url, seller_id, is_verified, is_deleted, created_at),
+        profiles(*)
+      `)
       .order('created_at', { ascending: false });
     if (ordersData) setOrders(ordersData as any[]);
 
@@ -212,7 +213,6 @@ export default function Admin() {
           price: newEbook.price,
           commission_amount: newEbook.commission_amount,
           cover_url: newEbook.cover_url,
-          images: newEbook.images || [],
           file_url: newEbook.file_url,
           category: newEbook.category,
           cosmofeed_url: newEbook.cosmofeed_url || '',
@@ -226,7 +226,7 @@ export default function Admin() {
       setIsAdding(false);
       setNewEbook({
         title: '', author: '', description: '', price: 0, commission_amount: 0,
-        cover_url: '', images: [], file_url: '', category: 'Fiction', cosmofeed_url: '', seller_id: ''
+        cover_url: '', file_url: '', category: 'Fiction', cosmofeed_url: '', seller_id: ''
       });
     } catch (error: any) {
       toast.error(error.message);
@@ -383,54 +383,6 @@ export default function Admin() {
       fetchData();
     } catch (error: any) {
        toast.error(error.message);
-    }
-  };
-
-  const handleImageUpload = async (file: File, isEdit: boolean = false) => {
-    setIsUploading(true);
-    const toastId = toast.loading('Uploading additional image...');
-    try {
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${Math.random()}.${fileExt}`;
-      const filePath = `product_images/${fileName}`;
-
-      const { data, error: storageError } = await supabase.storage
-        .from('ebooks')
-        .upload(filePath, file);
-
-      if (!storageError && data) {
-        const { data: { publicUrl } } = supabase.storage.from('ebooks').getPublicUrl(filePath);
-        if (isEdit) {
-          setEditFormData(prev => ({ ...prev, images: [...(prev.images || []), publicUrl] }));
-        } else {
-          setNewEbook(prev => ({ ...prev, images: [...(prev.images || []), publicUrl] }));
-        }
-        toast.success('Image added to gallery!', { id: toastId });
-      } else {
-        const reader = new FileReader();
-        reader.onload = async (e) => {
-          const base64 = e.target?.result as string;
-          if (isEdit) {
-            setEditFormData(prev => ({ ...prev, images: [...(prev.images || []), base64] }));
-          } else {
-            setNewEbook(prev => ({ ...prev, images: [...(prev.images || []), base64] }));
-          }
-          toast.success('Image saved to database!', { id: toastId });
-        };
-        reader.readAsDataURL(file);
-      }
-    } catch (error) {
-      toast.error('Failed to upload image', { id: toastId });
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
-  const removeImage = (index: number, isEdit: boolean = false) => {
-    if (isEdit) {
-      setEditFormData(prev => ({ ...prev, images: (prev.images || []).filter((_, i) => i !== index) }));
-    } else {
-      setNewEbook(prev => ({ ...prev, images: (prev.images || []).filter((_, i) => i !== index) }));
     }
   };
 
@@ -1333,27 +1285,7 @@ export default function Admin() {
                    {(newEbook.cover_url || newEbook.file_url) && <p className="text-[10px] font-bold text-green-600 mt-2">Files Selected ✓</p>}
                 </div>
 
-                <div className="space-y-2">
-                  <Label className="text-[10px] font-black uppercase text-zinc-400">Gallery Images (Slider)</Label>
-                  <div className="grid grid-cols-4 gap-2">
-                    {(newEbook.images || []).map((img, idx) => (
-                      <div key={idx} className="relative aspect-square rounded-lg overflow-hidden border border-zinc-100 group">
-                        <img src={img} className="w-full h-full object-cover" />
-                        <button 
-                          type="button" 
-                          onClick={() => removeImage(idx)}
-                          className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
-                      </div>
-                    ))}
-                    <label className="aspect-square rounded-lg border-2 border-dashed border-zinc-200 flex items-center justify-center cursor-pointer hover:bg-zinc-50 transition-colors">
-                      <Plus className="w-4 h-4 text-zinc-400" />
-                      <input type="file" className="hidden" accept="image/*" onChange={(e) => e.target.files && handleImageUpload(e.target.files[0])} />
-                    </label>
-                  </div>
-                </div>
+
              </div>
              <Button type="submit" className="w-full bg-zinc-900 text-white hover:bg-black font-black h-12 rounded-2xl" disabled={isUploading}>
                 {isUploading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : 'PUBLISH NOW'}
@@ -1381,27 +1313,7 @@ export default function Admin() {
                 </div>
              </div>
              
-             <div className="space-y-2">
-                <Label className="text-[10px] font-black uppercase text-zinc-400">Gallery Images (Slider)</Label>
-                <div className="grid grid-cols-4 gap-2">
-                  {(editFormData.images || []).map((img, idx) => (
-                    <div key={idx} className="relative aspect-square rounded-lg overflow-hidden border border-zinc-100 group">
-                      <img src={img} className="w-full h-full object-cover" />
-                      <button 
-                        type="button" 
-                        onClick={() => removeImage(idx, true)}
-                        className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ))}
-                  <label className="aspect-square rounded-lg border-2 border-dashed border-zinc-200 flex items-center justify-center cursor-pointer hover:bg-zinc-50 transition-colors">
-                    <Plus className="w-4 h-4 text-zinc-400" />
-                    <input type="file" className="hidden" accept="image/*" onChange={(e) => e.target.files && handleImageUpload(e.target.files[0], true)} />
-                  </label>
-                </div>
-             </div>
+
              <Button type="submit" className="w-full bg-orange-600 text-white hover:bg-orange-700 font-black h-12 rounded-2xl">SYCHRONIZE CHANGES</Button>
           </form>
         </DialogContent>
