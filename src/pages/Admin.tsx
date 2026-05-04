@@ -5,7 +5,7 @@ import {
   Plus, Pencil, Trash2, Package, Users, IndianRupee, BookOpen, Upload, X, 
   Loader2, Image as ImageIcon, ExternalLink, BadgeCheck, Share2, 
   Search, Filter, Download, ChartBar, CreditCard, LayoutDashboard,
-  CheckCircle2, AlertCircle, History
+  CheckCircle2, AlertCircle, History, ShieldCheck
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
