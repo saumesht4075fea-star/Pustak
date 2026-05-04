@@ -16,11 +16,13 @@ import Help from './pages/Help';
 import GlobalChat from './components/GlobalChat';
 import AIHelper from './components/AIHelper';
 import { BugHunter } from './components/BugHunter';
-import { BookOpen, Heart, ShoppingBag, User as UserIcon, Instagram, LogIn, LogOut, ShieldCheck, AlertTriangle, LayoutDashboard, UserCircle, Youtube, HelpCircle, Info, Smartphone } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Bot, Send, Sparkles, X, User as UserIcon, Loader2, BookOpen, Heart, ShoppingBag, Instagram, LogIn, LogOut, ShieldCheck, AlertTriangle, LayoutDashboard, UserCircle, Youtube, HelpCircle, Info, Smartphone, Bell, BellRing } from 'lucide-react';
+import { Button, buttonVariants } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import { Toaster } from '@/components/ui/sonner';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from '@/components/ui/dialog';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -89,6 +91,18 @@ function Navbar({ user, isAdmin, isSeller, hasOrders }: { user: User | null; isA
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
+  const [notifications, setNotifications] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (user) {
+      setNotifications([
+        { id: 1, title: 'Welcome to Pustak Online', message: 'Explore our premium ebook collection!', date: 'Just now', read: false },
+        { id: 2, title: 'Special Offer', message: 'Get 10% cash back on your next referral!', date: '2h ago', read: false }
+      ]);
+    }
+  }, [user]);
+
+  const unreadCount = notifications.filter(n => !n.read).length;
 
   const handleGoogleLogin = async () => {
     try {
@@ -171,6 +185,45 @@ function Navbar({ user, isAdmin, isSeller, hasOrders }: { user: User | null; isA
               <ShoppingBag className="w-5 h-5" />
             </Button>
           </Link>
+
+          <Popover>
+            <PopoverTrigger className={cn(buttonVariants({ variant: "ghost", size: "icon" }), "text-zinc-600 relative")}>
+              {unreadCount > 0 ? <BellRing className="w-5 h-5 text-orange-600 animate-pulse" /> : <Bell className="w-5 h-5" />}
+              {unreadCount > 0 && (
+                <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border border-white" />
+              )}
+            </PopoverTrigger>
+            <PopoverContent className="w-80 p-0 rounded-2xl border border-zinc-100 shadow-2xl" align="end">
+              <div className="p-4 border-b border-zinc-100 bg-zinc-50/50">
+                 <h3 className="text-sm font-black italic uppercase tracking-widest">Notifications</h3>
+              </div>
+              <div className="max-h-[300px] overflow-y-auto">
+                {user ? (
+                  notifications.length > 0 ? (
+                    notifications.map(n => (
+                      <div key={n.id} className="p-4 border-b border-zinc-50 last:border-0 hover:bg-zinc-50 transition-colors cursor-pointer">
+                        <p className="text-[10px] font-black text-orange-600 uppercase mb-1">{n.title}</p>
+                        <p className="text-xs font-medium text-zinc-600 line-clamp-2 leading-relaxed">{n.message}</p>
+                        <p className="text-[8px] font-bold text-zinc-400 mt-2">{n.date}</p>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="p-8 text-center">
+                       <Bell className="w-8 h-8 text-zinc-200 mx-auto mb-2" />
+                       <p className="text-xs font-bold text-zinc-400 uppercase italic">No notifications yet</p>
+                    </div>
+                  )
+                ) : (
+                  <div className="p-8 text-center">
+                     <p className="text-xs font-bold text-zinc-400 uppercase italic">Please sign in to see updates</p>
+                  </div>
+                )}
+              </div>
+              <div className="p-2 bg-zinc-50 text-center">
+                 <Button variant="ghost" size="sm" className="text-[10px] font-black uppercase text-zinc-400">Clear All Alerts</Button>
+              </div>
+            </PopoverContent>
+          </Popover>
           
           {isSeller && !isAdmin && user && (
             <Link to="/dashboard">
@@ -274,7 +327,7 @@ function Navbar({ user, isAdmin, isSeller, hasOrders }: { user: User | null; isA
           )}
           
           <a 
-            href="https://youtube.com" 
+            href="https://youtube.com/@Pustak_online" 
             target="_blank" 
             rel="noopener noreferrer"
             className="hidden sm:flex ml-2 p-2 text-zinc-600 hover:text-red-600 transition-colors"
@@ -283,7 +336,7 @@ function Navbar({ user, isAdmin, isSeller, hasOrders }: { user: User | null; isA
           </a>
           
           <a 
-            href="https://instagram.com" 
+            href="https://www.instagram.com/pustak.online_" 
             target="_blank" 
             rel="noopener noreferrer"
             className="hidden sm:flex p-2 text-zinc-600 hover:text-pink-600 transition-colors"
@@ -459,8 +512,8 @@ export default function App() {
                 <div className="space-y-4">
                   <h4 className="text-xs font-black uppercase tracking-widest text-zinc-900 italic">Social</h4>
                   <div className="flex gap-4">
-                    <a href="#" className="w-8 h-8 rounded-lg bg-zinc-100 flex items-center justify-center text-zinc-400 hover:bg-red-50 hover:text-red-600 transition-all"><Youtube className="w-4 h-4" /></a>
-                    <a href="#" className="w-8 h-8 rounded-lg bg-zinc-100 flex items-center justify-center text-zinc-400 hover:bg-pink-50 hover:text-pink-600 transition-all"><Instagram className="w-4 h-4" /></a>
+                    <a href="https://youtube.com/@Pustak_online" target="_blank" rel="noopener noreferrer" className="w-8 h-8 rounded-lg bg-zinc-100 flex items-center justify-center text-zinc-400 hover:bg-red-50 hover:text-red-600 transition-all"><Youtube className="w-4 h-4" /></a>
+                    <a href="https://www.instagram.com/pustak.online_" target="_blank" rel="noopener noreferrer" className="w-8 h-8 rounded-lg bg-zinc-100 flex items-center justify-center text-zinc-400 hover:bg-pink-50 hover:text-pink-600 transition-all"><Instagram className="w-4 h-4" /></a>
                   </div>
                 </div>
               </div>

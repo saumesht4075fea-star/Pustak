@@ -257,15 +257,24 @@ export default function Home({ user }: { user: User | null }) {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.7 }}
-            className="absolute inset-0"
+            className="absolute inset-0 bg-black"
           >
+            {/* Blurred background for different aspect ratios */}
+            <div 
+              className="absolute inset-0 blur-2xl opacity-50 scale-110"
+              style={{ 
+                backgroundImage: `url(${banners.length > 0 ? banners[currentBannerIndex].image_url : "https://images.unsplash.com/photo-1524995997946-a1c2e315a42f?auto=format&fit=crop&w=1920&q=80"})`,
+                backgroundPosition: 'center',
+                backgroundSize: 'cover'
+              }}
+            />
             <img 
               src={banners.length > 0 ? banners[currentBannerIndex].image_url : "https://images.unsplash.com/photo-1524995997946-a1c2e315a42f?auto=format&fit=crop&w=1920&q=80"} 
               alt="Banner" 
-              className="w-full h-full object-cover"
+              className="w-full h-full object-contain relative z-10"
               referrerPolicy="no-referrer"
             />
-            <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/40 to-transparent flex items-center px-8 sm:px-16">
+            <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/40 to-transparent flex items-center px-8 sm:px-16 z-20">
               <div className="max-w-2xl space-y-4 md:space-y-6">
                 <motion.div
                   initial={{ y: 20, opacity: 0 }}

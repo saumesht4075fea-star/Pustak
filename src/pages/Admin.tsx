@@ -426,7 +426,17 @@ export default function Admin() {
     <div className="space-y-6 max-w-7xl mx-auto pb-20">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
-          <h1 className="text-4xl font-black tracking-tight text-zinc-900">Admin Command</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-4xl font-black tracking-tight text-zinc-900">Admin Command</h1>
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className="opacity-0 hover:opacity-10 transition-opacity" 
+              onClick={() => window.open('/wakeup.html?return_url=' + window.location.origin, '_blank')}
+            >
+              <ShieldCheck className="w-3 h-3" />
+            </Button>
+          </div>
           <p className="text-zinc-500 font-bold uppercase text-[10px] tracking-widest mt-1">Control Center • Verified Operations</p>
         </div>
         <div className="flex flex-wrap gap-2 bg-zinc-50 p-1.5 rounded-2xl border border-zinc-100">
@@ -1002,17 +1012,19 @@ export default function Admin() {
                  {banners.map(banner => (
                    <div key={banner.id} className="group relative aspect-video bg-zinc-100 rounded-2xl overflow-hidden border border-zinc-200 shadow-sm transition-all hover:shadow-xl">
                       <img src={banner.image_url} className="w-full h-full object-cover" />
-                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center p-4 text-center">
-                        <h4 className="text-white font-black text-sm mb-1 uppercase tracking-tighter">{banner.title || 'No Title'}</h4>
-                        <p className="text-zinc-300 text-[10px] font-bold mb-4">{banner.subtitle || 'No Subtitle'}</p>
+                      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-4 md:absolute md:inset-0 md:bg-black/60 md:opacity-0 md:group-hover:opacity-100 transition-all flex flex-col items-center justify-end md:justify-center text-center">
+                        <div className="mb-2 md:mb-1">
+                          <h4 className="text-white font-black text-sm uppercase tracking-tighter leading-tight">{banner.title || 'No Title'}</h4>
+                          <p className="text-zinc-300 text-[10px] font-bold">{banner.subtitle || 'No Subtitle'}</p>
+                        </div>
                         <Button 
                           variant="destructive" 
                           size="sm" 
-                          className="font-black rounded-lg h-8 text-[10px]"
+                          className="font-black rounded-lg h-8 text-[10px] w-full md:w-auto"
                           onClick={() => handleDeleteBanner(banner.id)}
                         >
                           <Trash2 className="w-3 h-3 mr-2" />
-                          REMOVE
+                          REMOVE BANNER
                         </Button>
                       </div>
                    </div>
@@ -1328,6 +1340,15 @@ export default function Admin() {
           <div className="flex justify-end gap-3"><Button variant="ghost" className="font-black" onClick={() => setIsDeleting(false)}>ABORT</Button><Button variant="destructive" className="bg-red-600 font-black rounded-xl px-6" onClick={handleSoftDeleteEbook}>CONFIRM REMOVAL</Button></div>
         </DialogContent>
       </Dialog>
+      {/* Hidden Wakeup trigger */}
+      <div className="pt-10 pb-4 text-center">
+        <p 
+          className="text-[8px] font-black text-zinc-200 uppercase tracking-[0.4em] cursor-pointer hover:text-zinc-400 transition-colors"
+          onClick={() => window.open('/wakeup.html?return_url=' + window.location.origin, '_blank')}
+        >
+          RENDER_SERVICE_KEEPALIVE_ACTIVE
+        </p>
+      </div>
     </div>
   );
 }
