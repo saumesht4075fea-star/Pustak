@@ -168,7 +168,9 @@ export default function SellerDashboard({ user, isAdmin, isSeller }: { user: Use
   const totalDirectEarnings = confirmedUniqueSales
     .filter(s => s.ebook?.seller_id === user?.id)
     .reduce((acc, sale) => {
-      const commission = sale.commission_amount || sale.ebook?.commission_amount || 0;
+      // If there IS a referrer, seller gets (Amount - Commission - AdminFee)
+      // If there IS NO referrer, seller gets (Amount - AdminFee)
+      const commission = sale.referrer_id ? (sale.commission_amount || sale.ebook?.commission_amount || 0) : 0;
       const adminFee = 60;
       return acc + (sale.amount - commission - adminFee);
     }, 0);
@@ -187,7 +189,7 @@ export default function SellerDashboard({ user, isAdmin, isSeller }: { user: Use
   const pendingDirectEarnings = pendingSales
     .filter(s => s.ebook?.seller_id === user?.id)
     .reduce((acc, sale) => {
-      const commission = sale.commission_amount || sale.ebook?.commission_amount || 0;
+      const commission = sale.referrer_id ? (sale.commission_amount || sale.ebook?.commission_amount || 0) : 0;
       const adminFee = 60;
       return acc + (sale.amount - commission - adminFee);
     }, 0);
@@ -204,7 +206,7 @@ export default function SellerDashboard({ user, isAdmin, isSeller }: { user: Use
       earnings += (sale.commission_amount || sale.ebook?.commission_amount || 0);
     }
     if (sale.ebook?.seller_id === user?.id) {
-      const commission = sale.commission_amount || sale.ebook?.commission_amount || 0;
+      const commission = sale.referrer_id ? (sale.commission_amount || sale.ebook?.commission_amount || 0) : 0;
       const adminFee = 60;
       earnings += (sale.amount - commission - adminFee);
     }

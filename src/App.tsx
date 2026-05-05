@@ -16,9 +16,8 @@ import Help from './pages/Help';
 import GlobalChat from './components/GlobalChat';
 import AIHelper from './components/AIHelper';
 import { BugHunter } from './components/BugHunter';
-import { Bot, Send, Sparkles, X, User as UserIcon, Loader2, BookOpen, Heart, ShoppingBag, Instagram, LogIn, LogOut, ShieldCheck, AlertTriangle, LayoutDashboard, UserCircle, Youtube, HelpCircle, Info, Smartphone, Bell, BellRing } from 'lucide-react';
-import { Button, buttonVariants } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
+import { BookOpen, Heart, ShoppingBag, User as UserIcon, Instagram, LogIn, LogOut, ShieldCheck, AlertTriangle, LayoutDashboard, UserCircle, Youtube, HelpCircle, Info, Smartphone, Bell, BellRing } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { Toaster } from '@/components/ui/sonner';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from '@/components/ui/dialog';
@@ -29,7 +28,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 async function syncUser(user: User, displayName?: string) {
   try {
-    const adminEmails = ['saumesht4075fea@gmail.com', 'mohittttt868@gmail.com', 'jeetusharma1583@gmail.com'];
+    const adminEmails = ['saumesht4075fea@gmail.com', 'mohittttt868@gmail.com'];
     const role = adminEmails.includes(user.email || '') ? 'admin' : 'customer';
     
     const { error } = await supabase.from('profiles').upsert({
@@ -39,8 +38,7 @@ async function syncUser(user: User, displayName?: string) {
       role: role,
       created_at: new Date().toISOString()
     }, { 
-      onConflict: 'uid',
-      ignoreDuplicates: true 
+      onConflict: 'uid'
     });
 
     if (error) console.error('Error syncing profile:', error);
@@ -102,16 +100,26 @@ function Navbar({ user, isAdmin, isSeller, hasOrders }: { user: User | null; isA
     }
   }, [user]);
 
+  useEffect(() => {
+    if (!isLoginOpen) {
+      setEmail('');
+      setPassword('');
+      setName('');
+    }
+  }, [isLoginOpen]);
+
   const unreadCount = notifications.filter(n => !n.read).length;
 
   const handleGoogleLogin = async () => {
     try {
+      // Use select_account to force Google to show the account picker
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
           redirectTo: window.location.origin,
           queryParams: {
-            prompt: 'select_account'
+            prompt: 'select_account',
+            access_type: 'offline'
           }
         }
       });
@@ -187,11 +195,13 @@ function Navbar({ user, isAdmin, isSeller, hasOrders }: { user: User | null; isA
           </Link>
 
           <Popover>
-            <PopoverTrigger className={cn(buttonVariants({ variant: "ghost", size: "icon" }), "text-zinc-600 relative")}>
-              {unreadCount > 0 ? <BellRing className="w-5 h-5 text-orange-600 animate-pulse" /> : <Bell className="w-5 h-5" />}
-              {unreadCount > 0 && (
-                <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border border-white" />
-              )}
+            <PopoverTrigger asChild>
+              <Button variant="ghost" size="icon" className="text-zinc-600 relative">
+                {unreadCount > 0 ? <BellRing className="w-5 h-5 text-orange-600 animate-pulse" /> : <Bell className="w-5 h-5" />}
+                {unreadCount > 0 && (
+                  <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border border-white" />
+                )}
+              </Button>
             </PopoverTrigger>
             <PopoverContent className="w-80 p-0 rounded-2xl border border-zinc-100 shadow-2xl" align="end">
               <div className="p-4 border-b border-zinc-100 bg-zinc-50/50">
@@ -225,8 +235,17 @@ function Navbar({ user, isAdmin, isSeller, hasOrders }: { user: User | null; isA
             </PopoverContent>
           </Popover>
           
-          {isSeller && !isAdmin && user && (
-            <Link to="/dashboard">
+          {user && !isAdmin && (
+            <Link to="/dashboard" className="hidden sm:flex">
+              <Button variant="ghost" className="text-blue-600 gap-2 font-black italic hover:bg-blue-50 transition-all px-3">
+                <LayoutDashboard className="w-5 h-5" />
+                <span className="text-[10px] uppercase tracking-tighter">Seller Board</span>
+              </Button>
+            </Link>
+          )}
+          
+          {user && !isAdmin && (
+            <Link to="/dashboard" className="sm:hidden">
               <Button variant="ghost" size="icon" className="text-blue-600">
                 <LayoutDashboard className="w-5 h-5" />
               </Button>
@@ -359,6 +378,16 @@ export default function App() {
 
   useEffect(() => {
     const initializeAuth = async () => {
+      // CLEAR STALE LOCAL STORAGE: Since we moved to sessionStorage, we must ensure
+      // that NO residues from previous localStorage-based sessions exist.
+      if (typeof window !== 'undefined') {
+        Object.keys(localStorage).forEach(key => {
+          if (key.includes('supabase.auth.token') || key.startsWith('sb-')) {
+            localStorage.removeItem(key);
+          }
+        });
+      }
+
       if (!isSupabaseConfigured) {
         setLoading(false);
         return;
@@ -370,9 +399,9 @@ export default function App() {
           if (error.message.includes('Refresh Token Not Found') || error.message.includes('invalid_refresh_token')) {
             console.warn('Invalid session detected, clearing storage...');
             // Attempt to clear common supabase storage keys just in case
-            Object.keys(localStorage).forEach(key => {
+            Object.keys(sessionStorage).forEach(key => {
               if (key.includes('supabase.auth.token') || key.startsWith('sb-')) {
-                localStorage.removeItem(key);
+                sessionStorage.removeItem(key);
               }
             });
             // Force a sign out to clear any internal SDK state
@@ -402,7 +431,7 @@ export default function App() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       const currentUser = session?.user ?? null;
       
-      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
         setUser(currentUser);
         if (currentUser) {
           checkRole(currentUser);
@@ -419,7 +448,9 @@ export default function App() {
       setLoading(false);
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   const checkOrders = async (user: User) => {
@@ -436,7 +467,7 @@ export default function App() {
 
   const checkRole = async (user: User) => {
     if (!isSupabaseConfigured) return;
-    const adminEmails = ['saumesht4075fea@gmail.com', 'mohittttt868@gmail.com', 'jeetusharma1583@gmail.com'];
+    const adminEmails = ['saumesht4075fea@gmail.com', 'mohittttt868@gmail.com'];
     if (adminEmails.includes(user.email || '')) {
       setIsAdmin(true);
       setIsSeller(true);
@@ -450,8 +481,18 @@ export default function App() {
       .single();
 
     if (data) {
-      setIsAdmin(data.role === 'admin');
-      setIsSeller(data.role === 'seller' || data.role === 'admin');
+      // Final authority is the hardcoded list for ADMIN role
+      const isActuallyAdmin = adminEmails.includes(user.email || '');
+      setIsAdmin(isActuallyAdmin);
+      
+      // If DB says admin but hardcoded list doesn't, sync it back to customer IMMEDIATELY
+      if (data.role === 'admin' && !isActuallyAdmin) {
+        setIsSeller(false);
+        supabase.from('profiles').update({ role: 'customer' }).eq('uid', user.id).then();
+      } else {
+        // Normal role setting
+        setIsSeller(data.role === 'seller' || data.role === 'admin' || isActuallyAdmin);
+      }
     }
   };
 

@@ -54,96 +54,115 @@ export default function ProductDetail({ user, isAdmin, isSeller }: { user: User 
     
     // UUID regex to check for direct UIDs
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    
+    // Clean up input: remove whitespace and handle "REF-" prefix if they typed it for a UID
+    let cleanCode = code.trim();
+    if (cleanCode.startsWith('REF-') && cleanCode.length > 30) {
+       // Might be REF-UUID format accidentally
+       const potentialUuid = cleanCode.substring(4);
+       if (uuidRegex.test(potentialUuid)) cleanCode = potentialUuid;
+    }
 
     try {
-      // 1. Direct UID matching
-      if (uuidRegex.test(code)) {
-        if (code === user?.id) {
+      // 1. Check if the code is a valid Order Referral Code for THIS product
+      const { data: orderData } = await supabase
+        .from('orders')
+        .select('user_id, ebook_id, status')
+        .eq('referral_code', code.trim().toUpperCase())
+        .eq('ebook_id', id)
+        .eq('status', 'success')
+        .limit(1);
+
+      if (orderData && orderData.length > 0) {
+        if (orderData[0].user_id === user?.id) {
+          setReferralCodeError('Cannot refer yourself');
+          setIsVerifyingCode(false);
+          return;
+        }
+        
+        setAppliedReferrerId(orderData[0].user_id);
+        
+        // Track click
+        supabase.from('referral_tracking').insert({
+          referrer_id: orderData[0].user_id,
+          created_at: new Date().toISOString()
+        }).then();
+
+        toast.success('Referral code verified!');
+        setIsVerifyingCode(false);
+        return;
+      }
+
+      // 2. Direct UID or Username matching - MUST have purchased the book
+      let matchedReferrerId: string | null = null;
+      
+      // Try UID first
+      if (uuidRegex.test(cleanCode)) {
+        matchedReferrerId = cleanCode;
+      } else {
+        // Try username
+        const { data: profileMatch } = await supabase
+          .from('profiles')
+          .select('uid, display_name')
+          .ilike('display_name', code.trim())
+          .limit(1);
+        
+        if (profileMatch && profileMatch.length > 0) {
+          matchedReferrerId = profileMatch[0].uid;
+        }
+      }
+
+      if (matchedReferrerId) {
+        if (matchedReferrerId === user?.id) {
           setReferralCodeError('Cannot refer yourself');
           setIsVerifyingCode(false);
           return;
         }
 
-        const { data: prof, error } = await supabase
+        // Verify they actually own THE BOOK we are viewing
+        const { data: purchaseCheck } = await supabase
+          .from('orders')
+          .select('id')
+          .eq('user_id', matchedReferrerId)
+          .eq('ebook_id', id)
+          .eq('status', 'success')
+          .limit(1);
+
+        if (!purchaseCheck || purchaseCheck.length === 0) {
+          setReferralCodeError('Referrer has not purchased this book');
+          setIsVerifyingCode(false);
+          return;
+        }
+
+        const { data: prof } = await supabase
           .from('profiles')
-          .select('uid, role')
-          .eq('uid', code)
+          .select('email')
+          .eq('uid', matchedReferrerId)
           .single();
         
-        if (prof && !error) {
-          if (prof.role === 'admin') {
+        if (prof) {
+          const adminEmails = ['saumesht4075fea@gmail.com', 'mohittttt868@gmail.com'];
+          if (adminEmails.includes(prof.email || '')) {
             setReferralCodeError('Cannot use admin referral');
             setIsVerifyingCode(false);
             return;
           }
-          setAppliedReferrerId(prof.uid);
-          
-          // Track click
-          supabase.from('referral_tracking').insert({
-            referrer_id: prof.uid,
-            created_at: new Date().toISOString()
-          }).then();
-
-          toast.success('Referral linked!');
-          setIsVerifyingCode(false);
-          return;
         }
-      }
 
-      // 2. Try looking up by Order Referral Code
-      const { data: orderData } = await supabase
-        .from('orders')
-        .select('user_id, profiles!inner(role)')
-        .eq('referral_code', code)
-        .limit(1);
-
-      if (orderData && orderData.length > 0) {
-        // @ts-ignore
-        if (orderData[0].profiles?.role === 'admin') {
-          setReferralCodeError('Cannot use admin referral');
-        } else if (orderData[0].user_id === user?.id) {
-          setReferralCodeError('Cannot refer yourself');
-        } else {
-          setAppliedReferrerId(orderData[0].user_id);
-          
-          // Track click
-          supabase.from('referral_tracking').insert({
-            referrer_id: orderData[0].user_id,
-            created_at: new Date().toISOString()
-          }).then();
-
-          toast.success('Referral code verified!');
-        }
-      } else {
-        // 3. Fallback to legacy username matching
-        const { data: profiles } = await supabase
-          .from('profiles')
-          .select('uid, display_name, role');
+        setAppliedReferrerId(matchedReferrerId);
         
-        const match = profiles?.find(p => 
-          p.display_name?.replace(/\s+/g, '').toLowerCase() === code.toLowerCase()
-        );
+        // Track click
+        supabase.from('referral_tracking').insert({
+          referrer_id: matchedReferrerId,
+          created_at: new Date().toISOString()
+        }).then();
 
-        if (match) {
-          if (match.role === 'admin') {
-            setReferralCodeError('Cannot use admin referral');
-          } else if (match.uid === user?.id) {
-            setReferralCodeError('Cannot refer yourself');
-          } else {
-            setAppliedReferrerId(match.uid);
-            
-            // Track click
-            supabase.from('referral_tracking').insert({
-              referrer_id: match.uid,
-              created_at: new Date().toISOString()
-            }).then();
-
-            toast.success('Referral username verified!');
-          }
-        } else {
-          setReferralCodeError('Invalid code or username');
-        }
+        toast.success('Referral verified!');
+        setIsVerifyingCode(false);
+        return;
       }
+
+      setReferralCodeError('Invalid code or referrer has not purchased this book');
     } catch (err) {
       setReferralCodeError('Error checking code');
     } finally {
@@ -365,7 +384,7 @@ export default function ProductDetail({ user, isAdmin, isSeller }: { user: User 
     
     // 1. Ensure current user has a profile first (prevents user_id FK violation)
     try {
-      const adminEmails = ['saumesht4075fea@gmail.com', 'mohittttt868@gmail.com', 'jeetusharma1583@gmail.com'];
+      const adminEmails = ['saumesht4075fea@gmail.com', 'mohittttt868@gmail.com'];
       const role = adminEmails.includes(user.email || '') ? 'admin' : 'customer';
       
       await supabase.from('profiles').upsert({
@@ -381,13 +400,6 @@ export default function ProductDetail({ user, isAdmin, isSeller }: { user: User 
 
     let finalReferrerId = appliedReferrerId;
 
-    // RULE: If this is the user's FIRST EVER purchase, they cannot be referred.
-    // "the person who is purchasing for the first time will not applied to code referral"
-    if (!hasAnyOrders) {
-      console.log('First time buyer - overriding referral to null');
-      finalReferrerId = null;
-    }
-
     // 2. Extra double check to avoid FK violation: handle non-UUID referrers gracefully
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     
@@ -401,11 +413,12 @@ export default function ProductDetail({ user, isAdmin, isSeller }: { user: User 
         try {
           const { data, error } = await supabase
             .from('profiles')
-            .select('uid, role')
+            .select('uid, email, role')
             .eq('uid', finalReferrerId)
             .maybeSingle(); 
           
-          if (error || !data || data.role === 'admin') {
+          const adminEmails = ['saumesht4075fea@gmail.com', 'mohittttt868@gmail.com'];
+          if (error || !data || adminEmails.includes(data.email || '')) {
             console.warn('Referrer profile not found or is an admin, resetting to null:', finalReferrerId);
             finalReferrerId = null;
           }

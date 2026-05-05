@@ -5,7 +5,7 @@ import {
   Plus, Pencil, Trash2, Package, Users, IndianRupee, BookOpen, Upload, X, 
   Loader2, Image as ImageIcon, ExternalLink, BadgeCheck, Share2, 
   Search, Filter, Download, ChartBar, CreditCard, LayoutDashboard,
-  CheckCircle2, AlertCircle, History, ShieldCheck
+  CheckCircle2, AlertCircle, History
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -426,17 +426,7 @@ export default function Admin() {
     <div className="space-y-6 max-w-7xl mx-auto pb-20">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-4xl font-black tracking-tight text-zinc-900">Admin Command</h1>
-            <Button 
-              variant="ghost" 
-              size="icon" 
-              className="opacity-0 hover:opacity-10 transition-opacity" 
-              onClick={() => window.open('/wakeup.html?return_url=' + window.location.origin, '_blank')}
-            >
-              <ShieldCheck className="w-3 h-3" />
-            </Button>
-          </div>
+          <h1 className="text-4xl font-black tracking-tight text-zinc-900">Admin Command</h1>
           <p className="text-zinc-500 font-bold uppercase text-[10px] tracking-widest mt-1">Control Center • Verified Operations</p>
         </div>
         <div className="flex flex-wrap gap-2 bg-zinc-50 p-1.5 rounded-2xl border border-zinc-100">
@@ -1340,15 +1330,6 @@ export default function Admin() {
           <div className="flex justify-end gap-3"><Button variant="ghost" className="font-black" onClick={() => setIsDeleting(false)}>ABORT</Button><Button variant="destructive" className="bg-red-600 font-black rounded-xl px-6" onClick={handleSoftDeleteEbook}>CONFIRM REMOVAL</Button></div>
         </DialogContent>
       </Dialog>
-      {/* Hidden Wakeup trigger */}
-      <div className="pt-10 pb-4 text-center">
-        <p 
-          className="text-[8px] font-black text-zinc-200 uppercase tracking-[0.4em] cursor-pointer hover:text-zinc-400 transition-colors"
-          onClick={() => window.open('/wakeup.html?return_url=' + window.location.origin, '_blank')}
-        >
-          RENDER_SERVICE_KEEPALIVE_ACTIVE
-        </p>
-      </div>
     </div>
   );
 }

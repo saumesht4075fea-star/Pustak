@@ -14,7 +14,8 @@ export const supabase = createClient(
       autoRefreshToken: true,
       persistSession: true,
       detectSessionInUrl: true,
-      storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+      storage: typeof window !== 'undefined' ? window.sessionStorage : undefined,
+      flowType: 'pkce' // Use PKCE for better redirect isolation
     }
   }
 );
