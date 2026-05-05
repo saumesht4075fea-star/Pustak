@@ -194,21 +194,6 @@ export default function Home({ user }: { user: User | null }) {
     }
   };
 
-  const handleBecomeSeller = async () => {
-    if (!user) return;
-    try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({ role: 'seller' })
-        .eq('uid', user.id);
-      
-      if (error) throw error;
-      toast.success('Congratulations! You are now a seller.');
-    } catch (error: any) {
-      toast.error(error.message);
-    }
-  };
-
   const filteredEbooks = ebooks.filter(e => {
     const matchesCategory = (category === 'All' || e.category === category);
     const searchTerm = search.toLowerCase();
@@ -308,7 +293,10 @@ export default function Home({ user }: { user: User | null }) {
                   transition={{ delay: 0.4 }}
                   className="flex gap-4"
                 >
-                  <Button className="bg-white text-zinc-900 hover:bg-zinc-200 h-10 sm:h-12 px-6 sm:px-8 rounded-xl font-black text-xs sm:text-sm shadow-xl active:scale-95 transition-transform">
+                  <Button 
+                    onClick={() => document.getElementById('search-section')?.scrollIntoView({ behavior: 'smooth' })}
+                    className="bg-white text-zinc-900 hover:bg-zinc-200 h-10 sm:h-12 px-6 sm:px-8 rounded-xl font-black text-xs sm:text-sm shadow-xl active:scale-95 transition-transform"
+                  >
                     EXPLORE NOW
                   </Button>
                 </motion.div>
@@ -399,23 +387,27 @@ export default function Home({ user }: { user: User | null }) {
         </div>
       </div>
 
-      {/* Become a Seller Banner */}
-      {user && profile?.role === 'customer' && (
+      {/* Become a Seller Banner or Complete Profile Banner */}
+      {user && profile && !profile.avatar_url && (
         <motion.div 
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="p-8 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-3xl text-white flex flex-col md:flex-row items-center justify-between gap-6 shadow-xl shadow-blue-600/20"
+          className="p-8 bg-gradient-to-br from-orange-500 to-red-600 rounded-3xl text-white flex flex-col md:flex-row items-center justify-between gap-6 shadow-xl shadow-orange-600/20"
         >
           <div className="space-y-2 text-center md:text-left">
-            <h2 className="text-2xl font-black tracking-tight">Sell your books on Pustak! 📚</h2>
-            <p className="text-blue-100 font-medium max-w-lg">Join our community of authors. Set your own price, keep your earnings, and reach thousands of readers.</p>
+            <h2 className="text-2xl font-black tracking-tight flex items-center justify-center md:justify-start gap-3">
+              <Smartphone className="w-8 h-8" />
+              Complete Your Profile! 📸
+            </h2>
+            <p className="text-orange-50/80 font-medium max-w-lg">Add a profile photo to your account. Users with photos are 5x more likely to be trusted by authors and buyers.</p>
           </div>
-          <Button 
-            onClick={handleBecomeSeller}
-            className="bg-white text-blue-600 hover:bg-zinc-100 h-14 px-8 rounded-2xl font-bold text-lg shadow-lg whitespace-nowrap"
-          >
-            Start Selling & Earn
-          </Button>
+          <Link to="/profile">
+            <Button 
+              className="bg-white text-orange-600 hover:bg-zinc-100 h-14 px-8 rounded-2xl font-bold text-lg shadow-lg whitespace-nowrap"
+            >
+              Upload Photo Now
+            </Button>
+          </Link>
         </motion.div>
       )}
 

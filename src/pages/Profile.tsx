@@ -7,21 +7,58 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { User as UserIcon, Mail, BadgeCheck, Shield, Calendar, Save, Loader2, LogOut, Download } from 'lucide-react';
+import { User as UserIcon, Mail, BadgeCheck, Shield, Calendar, Save, Loader2, LogOut, Download, Camera, Upload, LayoutDashboard, TrendingUp, Wallet } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Profile as UserProfile } from '../types';
+import { Profile as UserProfile, Order } from '../types';
 
 export default function Profile({ user }: { user: User | null }) {
+  const navigate = useNavigate();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [displayName, setDisplayName] = useState('');
+  const [stats, setStats] = useState({ total: 0, thisMonth: 0 });
 
   useEffect(() => {
     if (user) {
       fetchProfile();
+      fetchStats();
     }
   }, [user]);
+
+  const fetchStats = async () => {
+    if (!user) return;
+    const { data: sales } = await supabase
+      .from('orders')
+      .select('*, ebook:ebooks(commission_amount, seller_id)')
+      .or(`referrer_id.eq.${user.id},ebook.seller_id.eq.${user.id}`)
+      .eq('status', 'success');
+
+    if (sales) {
+      const totals = sales.reduce((acc, sale) => {
+        let earnings = 0;
+        if (sale.referrer_id === user.id) {
+          earnings += (sale.commission_amount || sale.ebook?.commission_amount || 0);
+        }
+        if (sale.ebook?.seller_id === user.id) {
+          const commission = sale.referrer_id ? (sale.commission_amount || sale.ebook?.commission_amount || 0) : 0;
+          const adminFee = 60;
+          earnings += (sale.amount - commission - adminFee);
+        }
+
+        acc.total += earnings;
+        const d = new Date(sale.created_at);
+        const now = new Date();
+        if (d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()) {
+          acc.thisMonth += earnings;
+        }
+        return acc;
+      }, { total: 0, thisMonth: 0 });
+      setStats(totals);
+    }
+  };
 
   const fetchProfile = async () => {
     if (!user) return;
@@ -65,6 +102,61 @@ export default function Profile({ user }: { user: User | null }) {
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    try {
+      if (!event.target.files || event.target.files.length === 0) return;
+      if (!user) return;
+
+      setUploading(true);
+      const file = event.target.files[0];
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${user.id}-${Math.random()}.${fileExt}`;
+      const filePath = `${fileName}`;
+
+      // Upload to 'avatars' bucket (creates it if it doesn't exist in most setups, or fails gracefully)
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(filePath, file);
+
+      if (uploadError) {
+        // Fallback to 'ebooks' if 'avatars' bucket doesn't exist
+        const { error: fallbackError } = await supabase.storage
+          .from('ebooks')
+          .upload(`avatars/${filePath}`, file);
+        
+        if (fallbackError) throw uploadError;
+        
+        const { data: { publicUrl } } = supabase.storage.from('ebooks').getPublicUrl(`avatars/${filePath}`);
+        await updateAvatarUrl(publicUrl);
+      } else {
+        const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(filePath);
+        await updateAvatarUrl(publicUrl);
+      }
+    } catch (error: any) {
+      toast.error('Error uploading photo: ' + (error.message || 'Check storage permissions'));
+      console.error(error);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const updateAvatarUrl = async (url: string) => {
+    if (!user) return;
+    const { error } = await supabase
+      .from('profiles')
+      .update({ avatar_url: url })
+      .eq('uid', user.id);
+
+    if (error) throw error;
+
+    await supabase.auth.updateUser({
+      data: { avatar_url: url }
+    });
+
+    toast.success('Profile photo updated!');
+    fetchProfile();
   };
 
   const handleLogout = async () => {
@@ -123,16 +215,61 @@ export default function Profile({ user }: { user: User | null }) {
           </motion.div>
         )}
 
+        {/* Earnings Overview */}
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}>
+          <Card className="border-none shadow-xl shadow-zinc-200/50 rounded-[2rem] overflow-hidden bg-white p-6">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-6">
+              <div className="flex items-center gap-4">
+                <div className="w-14 h-14 bg-orange-100 rounded-[1.25rem] flex items-center justify-center text-orange-600">
+                  <Wallet className="w-7 h-7" />
+                </div>
+                <div>
+                   <p className="text-[10px] font-black uppercase text-zinc-400 tracking-widest leading-none mb-1">Monthly Earnings</p>
+                   <h3 className="text-2xl font-black text-zinc-900 leading-none">₹{stats.thisMonth.toLocaleString('en-IN')}</h3>
+                   <p className="text-[10px] font-bold text-orange-600 uppercase mt-1">Verified: ₹{stats.total.toLocaleString('en-IN')}</p>
+                </div>
+              </div>
+              <Button 
+                onClick={() => navigate('/dashboard')}
+                className="w-full sm:w-auto h-12 bg-zinc-900 hover:bg-black rounded-xl px-6 font-black italic uppercase text-xs gap-2"
+              >
+                <LayoutDashboard className="w-4 h-4 ml-1" />
+                DASHBOARD HISTORY
+              </Button>
+            </div>
+          </Card>
+        </motion.div>
+
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
           <Card className="border-none shadow-2xl shadow-zinc-200/50 rounded-[2rem] sm:rounded-[2.5rem] overflow-hidden bg-white">
             <div className="h-24 sm:h-32 bg-gradient-to-r from-orange-500 to-orange-600" />
             <CardContent className="relative pt-0 px-6 sm:px-8 pb-8">
               <div className="flex flex-col sm:flex-row items-center sm:items-end gap-4 sm:gap-6 -mt-12 sm:-mt-12 mb-6 sm:mb-8 text-center sm:text-left">
-                <img 
-                  src={profile.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${profile.uid}`} 
-                  alt={profile.display_name} 
-                  className="w-24 h-24 sm:w-32 sm:h-32 rounded-[1.5rem] sm:rounded-[2rem] border-4 border-white shadow-xl bg-white"
-                />
+                <div className="relative group/avatar">
+                  <img 
+                    src={profile.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${profile.uid}`} 
+                    alt={profile.display_name} 
+                    className="w-24 h-24 sm:w-32 sm:h-32 rounded-[1.5rem] sm:rounded-[2rem] border-4 border-white shadow-xl bg-white object-cover"
+                  />
+                  <label className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover/avatar:opacity-100 transition-opacity cursor-pointer rounded-[1.5rem] sm:rounded-[2rem]">
+                    <div className="flex flex-col items-center text-white p-2">
+                      <Camera className="w-5 h-5 mb-1" />
+                      <span className="text-[8px] font-black uppercase tracking-widest">Change</span>
+                    </div>
+                    <input 
+                      type="file" 
+                      className="hidden" 
+                      accept="image/*"
+                      onChange={handleFileUpload}
+                      disabled={uploading}
+                    />
+                  </label>
+                  {uploading && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-white/80 rounded-[1.5rem] sm:rounded-[2rem]">
+                      <Loader2 className="w-8 h-8 text-orange-600 animate-spin" />
+                    </div>
+                  )}
+                </div>
                 <div className="pb-2 space-y-1">
                   <div className="flex items-center justify-center sm:justify-start gap-2">
                     <h2 className="text-2xl sm:text-3xl font-black text-zinc-900">{profile.display_name}</h2>

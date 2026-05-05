@@ -52,9 +52,9 @@ export default function AIHelper({ user, isAdmin }: AIHelperProps) {
 
   return (
       <motion.div
-        drag
+        drag={typeof window !== 'undefined' && window.innerWidth > 768}
         dragConstraints={{ left: -window.innerWidth + 80, right: 0, top: -window.innerHeight + 150, bottom: 0 }}
-        className="fixed bottom-24 right-5 sm:bottom-24 sm:right-5 z-[50] flex flex-col items-end"
+        className="fixed bottom-24 right-5 sm:bottom-24 sm:right-5 z-[100] flex flex-col items-end"
       >
         <AnimatePresence>
           {isOpen && (

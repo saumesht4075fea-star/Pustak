@@ -16,6 +16,7 @@ import Help from './pages/Help';
 import GlobalChat from './components/GlobalChat';
 import AIHelper from './components/AIHelper';
 import { BugHunter } from './components/BugHunter';
+import { Profile } from './types';
 import { BookOpen, Heart, ShoppingBag, User as UserIcon, Instagram, LogIn, LogOut, ShieldCheck, AlertTriangle, LayoutDashboard, UserCircle, Youtube, HelpCircle, Info, Smartphone, Bell, BellRing } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Toaster } from '@/components/ui/sonner';
@@ -84,7 +85,7 @@ function ConfigWarning() {
   );
 }
 
-function Navbar({ user, isAdmin, isSeller, hasOrders }: { user: User | null; isAdmin: boolean; isSeller: boolean; hasOrders: boolean }) {
+function Navbar({ user, profile, isAdmin, isSeller, hasOrders }: { user: User | null; profile: Profile | null; isAdmin: boolean; isSeller: boolean; hasOrders: boolean }) {
   const [isLoginOpen, setIsLoginOpen] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -237,16 +238,16 @@ function Navbar({ user, isAdmin, isSeller, hasOrders }: { user: User | null; isA
           
           {user && !isAdmin && (
             <Link to="/dashboard" className="hidden sm:flex">
-              <Button variant="ghost" className="text-blue-600 gap-2 font-black italic hover:bg-blue-50 transition-all px-3">
+              <Button variant="ghost" className="text-zinc-600 gap-2 font-black italic hover:bg-zinc-50 transition-all px-3">
                 <LayoutDashboard className="w-5 h-5" />
-                <span className="text-[10px] uppercase tracking-tighter">Seller Board</span>
+                <span className="text-[10px] uppercase tracking-tighter">Dashboard</span>
               </Button>
             </Link>
           )}
           
           {user && !isAdmin && (
             <Link to="/dashboard" className="sm:hidden">
-              <Button variant="ghost" size="icon" className="text-blue-600">
+              <Button variant="ghost" size="icon" className="text-zinc-600">
                 <LayoutDashboard className="w-5 h-5" />
               </Button>
             </Link>
@@ -265,10 +266,10 @@ function Navbar({ user, isAdmin, isSeller, hasOrders }: { user: User | null; isA
           {user ? (
             <div className="flex items-center gap-2">
               <Link to="/profile" className="flex items-center group p-0.5 sm:p-1 sm:pr-3 bg-zinc-50 hover:bg-orange-50 rounded-full border border-zinc-200 hover:border-orange-200 transition-all shrink-0">
-                <img src={user.user_metadata?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.id}`} alt="" className="w-8 h-8 rounded-full border border-white shadow-sm" />
+                <img src={profile?.avatar_url || user.user_metadata?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.id}`} alt="" className="w-8 h-8 rounded-full border border-white shadow-sm object-cover" />
                 <div className="hidden sm:flex flex-col items-start leading-tight sm:ml-2">
                   <p className="text-[10px] font-black text-zinc-900 group-hover:text-orange-600 transition-colors uppercase italic truncate max-w-[80px]">
-                    {user.user_metadata?.display_name || user.email?.split('@')[0]}
+                    {profile?.display_name || user.user_metadata?.display_name || user.email?.split('@')[0]}
                   </p>
                   <p className="text-[8px] font-bold text-zinc-400 group-hover:text-orange-400">EDIT PROFILE</p>
                 </div>
@@ -371,6 +372,7 @@ function Navbar({ user, isAdmin, isSeller, hasOrders }: { user: User | null; isA
 export default function App() {
   const [showSplash, setShowSplash] = useState(true);
   const [user, setUser] = useState<User | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [isSeller, setIsSeller] = useState(false);
   const [hasOrders, setHasOrders] = useState(false);
@@ -416,6 +418,7 @@ export default function App() {
         if (currentUser) {
           checkRole(currentUser);
           checkOrders(currentUser);
+          fetchProfile(currentUser);
         }
       } catch (err) {
         console.error('Auth initialization error:', err);
@@ -437,9 +440,11 @@ export default function App() {
           checkRole(currentUser);
           syncUser(currentUser);
           checkOrders(currentUser);
+          fetchProfile(currentUser);
         }
       } else if (event === 'SIGNED_OUT') {
         setUser(null);
+        setProfile(null);
         setIsAdmin(false);
         setIsSeller(false);
         setHasOrders(false);
@@ -452,6 +457,45 @@ export default function App() {
       subscription.unsubscribe();
     };
   }, []);
+
+  // Handled by useEffect
+  const fetchProfile = async (user: User) => {
+    const { data } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('uid', user.id)
+      .single();
+    if (data) setProfile(data as Profile);
+  };
+
+  useEffect(() => {
+    if (!user) {
+      setProfile(null);
+      return;
+    }
+
+    fetchProfile(user);
+
+    const channel = supabase
+      .channel(`profile-${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'profiles',
+          filter: `uid=eq.${user.id}`
+        },
+        (payload) => {
+          setProfile(payload.new as Profile);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id]);
 
   const checkOrders = async (user: User) => {
     if (!isSupabaseConfigured) return;
@@ -508,7 +552,7 @@ export default function App() {
     <Router>
       <BugHunter>
         <div className="min-h-screen bg-zinc-50 font-sans text-zinc-950 flex flex-col">
-          <Navbar user={user} isAdmin={isAdmin} isSeller={isSeller} hasOrders={hasOrders} />
+          <Navbar user={user} profile={profile} isAdmin={isAdmin} isSeller={isSeller} hasOrders={hasOrders} />
           <main className="container mx-auto px-4 py-8 flex-1">
             <AnimatePresence mode="wait">
               <Routes>

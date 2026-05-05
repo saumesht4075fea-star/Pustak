@@ -5,7 +5,7 @@ import {
   Plus, Pencil, Trash2, Package, Users, IndianRupee, BookOpen, Upload, X, 
   Loader2, Image as ImageIcon, ExternalLink, BadgeCheck, Share2, 
   Search, Filter, Download, ChartBar, CreditCard, LayoutDashboard,
-  CheckCircle2, AlertCircle, History
+  CheckCircle2, AlertCircle, History, TrendingUp
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -18,7 +18,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { toast } from 'sonner';
 import { Ebook, Order, Profile } from '../types';
 
-type AdminTab = 'overview' | 'utr' | 'reports' | 'payouts' | 'products' | 'sellers' | 'banners';
+type AdminTab = 'overview' | 'revenue' | 'orders' | 'utr' | 'reports' | 'payouts' | 'products' | 'sellers' | 'banners';
 
 export default function Admin() {
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
@@ -78,7 +78,7 @@ export default function Admin() {
     if (o.status !== 'pending') return false;
     
     const matchesUtr = utrSearch === '' || o.transaction_id?.includes(utrSearch);
-    const matchesName = nameSearch === '' || o.profiles?.display_name?.toLowerCase().includes(nameSearch.toLowerCase());
+    const matchesName = nameSearch === '' || o.buyer?.display_name?.toLowerCase().includes(nameSearch.toLowerCase());
     const matchesUpi = upiSearch === '' || false; // We don't store buyer UPI in Order yet?
     
     return matchesUtr && matchesName && matchesUpi;
@@ -148,15 +148,30 @@ export default function Admin() {
       .order('created_at', { ascending: false });
     if (ebooksData) setEbooks(ebooksData as Ebook[]);
 
-    const { data: ordersData } = await supabase
+    const { data: ordersData, error: ordersError } = await supabase
       .from('orders')
       .select(`
         *,
-        ebook:ebooks(id, title, author, description, price, commission_amount, cover_url, file_url, category, cosmofeed_url, seller_id, is_verified, is_deleted, created_at),
-        profiles(*)
+        ebook:ebooks(*)
       `)
       .order('created_at', { ascending: false });
-    if (ordersData) setOrders(ordersData as any[]);
+    
+    if (ordersError) {
+      console.error('Admin Orders Fetch Error:', ordersError);
+    }
+    
+    const { data: allProfiles } = await supabase.from('profiles').select('*');
+    
+    if (ordersData && allProfiles) {
+      const enrichedOrders = ordersData.map(order => ({
+        ...order,
+        buyer: allProfiles.find(p => p.uid === order.user_id),
+        referrer_profile: allProfiles.find(p => p.uid === order.referrer_id)
+      }));
+      setOrders(enrichedOrders as any[]);
+    } else if (ordersData) {
+      setOrders(ordersData as any[]);
+    }
 
     const { data: sellersData } = await supabase
       .from('profiles')
@@ -431,6 +446,8 @@ export default function Admin() {
         </div>
         <div className="flex flex-wrap gap-2 bg-zinc-50 p-1.5 rounded-2xl border border-zinc-100">
           <NavItem id="overview" label="Dashboard" icon={LayoutDashboard} />
+          <NavItem id="revenue" label="Revenue History" icon={IndianRupee} />
+          <NavItem id="orders" label="All Orders" icon={History} />
           <NavItem id="utr" label="UTR Matcher" icon={CheckCircle2} />
           <NavItem id="reports" label="Products & Sales" icon={ChartBar} />
           <NavItem id="payouts" label="Withdrawals" icon={CreditCard} />
@@ -443,14 +460,14 @@ export default function Admin() {
       {activeTab === 'overview' && (
         <div className="space-y-8">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            <Card className="border-zinc-200 shadow-sm bg-gradient-to-br from-white to-zinc-50">
+            <Card className="border-zinc-200 shadow-sm bg-zinc-900 text-white cursor-pointer hover:bg-black transition-colors" onClick={() => setActiveTab('revenue')}>
               <CardHeader className="pb-2">
                 <CardDescription className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Total Revenue</CardDescription>
-                <CardTitle className="text-3xl font-black text-zinc-900">₹{totalRevenue}</CardTitle>
+                <CardTitle className="text-3xl font-black text-white">₹{totalRevenue}</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="flex items-center gap-1 text-[10px] font-bold text-zinc-600">
-                  Total Gross Sales
+                <div className="flex items-center gap-1 text-[10px] font-bold text-zinc-400 uppercase italic">
+                  Click to view monthly history →
                 </div>
               </CardContent>
             </Card>
@@ -521,7 +538,9 @@ export default function Admin() {
                       <div key={order.id} className="p-4 bg-orange-50/30 rounded-2xl border border-orange-100 flex items-center justify-between">
                         <div>
                           <p className="text-xs font-black text-zinc-900">UTR: {order.transaction_id}</p>
-                          <p className="text-[10px] font-bold text-orange-600 uppercase">₹{order.amount} • {order.profiles?.display_name}</p>
+                          <p className="text-[10px] font-bold text-orange-600 uppercase">
+                            ₹{order.amount} • {order.buyer?.display_name || 'No Name'} ({order.buyer?.email || 'No Email'})
+                          </p>
                         </div>
                         <Button 
                           size="sm" 
@@ -545,6 +564,175 @@ export default function Admin() {
         </div>
       )}
 
+      {activeTab === 'revenue' && (() => {
+        const successfulOrders = orders.filter(o => o.status === 'success');
+        const groupedByMonth = successfulOrders.reduce((acc, order) => {
+          const date = new Date(order.created_at);
+          const monthKey = date.toLocaleString('default', { month: 'long', year: 'numeric' });
+          if (!acc[monthKey]) acc[monthKey] = { total: 0, days: {} };
+          acc[monthKey].total += order.amount;
+          
+          const dayKey = date.toLocaleDateString();
+          if (!acc[monthKey].days[dayKey]) acc[monthKey].days[dayKey] = { total: 0, count: 0 };
+          acc[monthKey].days[dayKey].total += order.amount;
+          acc[monthKey].days[dayKey].count += 1;
+          
+          return acc;
+        }, {} as Record<string, { total: number, days: Record<string, { total: number, count: number }> }>);
+
+        const sortedMonths = Object.keys(groupedByMonth).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
+
+        return (
+          <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            {sortedMonths.length > 0 ? (
+              sortedMonths.map((month) => (
+                <Card key={month} className="border-none shadow-xl shadow-zinc-200/50 rounded-[2.5rem] bg-white overflow-hidden">
+                  <div className="bg-zinc-900 p-8 text-white flex flex-col md:flex-row items-center justify-between gap-6">
+                    <div className="space-y-1 text-center md:text-left">
+                      <Badge className="bg-orange-600 text-white border-none font-black italic uppercase tracking-widest mb-2">Platform Revenue</Badge>
+                      <h2 className="text-3xl font-black tracking-tighter uppercase italic leading-none">{month}</h2>
+                    </div>
+                    <div className="text-center md:text-right">
+                       <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-1">Monthly Total</p>
+                       <p className="text-4xl font-black italic text-orange-500">₹{groupedByMonth[month].total.toLocaleString('en-IN')}</p>
+                    </div>
+                  </div>
+                  <CardContent className="p-8">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {Object.keys(groupedByMonth[month].days)
+                        .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())
+                        .map((day) => (
+                        <div key={day} className="p-6 rounded-3xl bg-zinc-50 border border-zinc-100 group hover:border-orange-200 hover:bg-orange-50/30 transition-all">
+                          <div className="flex justify-between items-start mb-4">
+                            <div>
+                               <p className="text-[10px] font-black text-zinc-400 group-hover:text-orange-400 uppercase tracking-[0.2em]">{new Date(day).toLocaleDateString(undefined, { weekday: 'short' })}</p>
+                               <p className="text-lg font-black text-zinc-900 group-hover:text-orange-600 tracking-tighter italic">{day}</p>
+                            </div>
+                            <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center text-zinc-300 group-hover:text-orange-200 border border-zinc-100 group-hover:border-orange-100 shadow-sm">
+                               <TrendingUp className="w-5 h-5" />
+                            </div>
+                          </div>
+                          <div className="pt-4 border-t border-zinc-200/50 flex justify-between items-end">
+                             <div>
+                                <p className="text-[9px] font-black text-zinc-400 uppercase">Daily Total</p>
+                                <p className="text-2xl font-black text-zinc-900">₹{groupedByMonth[month].days[day].total}</p>
+                             </div>
+                             <div className="text-right">
+                                <p className="text-[9px] font-black text-zinc-400 uppercase">Sales</p>
+                                <span className="bg-zinc-900 text-white text-[10px] font-black px-2 py-0.5 rounded-full">{groupedByMonth[month].days[day].count}</span>
+                             </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))
+            ) : (
+              <div className="text-center py-40 bg-white rounded-[3rem] border border-zinc-100 shadow-xl">
+                 <div className="flex flex-col items-center gap-4 opacity-20">
+                    <History className="w-16 h-16" />
+                    <h2 className="text-xl font-black uppercase italic">No Successful Sales Yet</h2>
+                 </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {activeTab === 'orders' && (
+        <div className="space-y-8 animate-in fade-in duration-500">
+           <Card className="border-zinc-200 shadow-xl">
+              <CardHeader className="bg-zinc-900 text-white rounded-t-3xl">
+                <CardTitle className="text-2xl font-black flex items-center gap-2">
+                  <Package className="w-6 h-6 text-orange-500" />
+                  Global Order Stream
+                </CardTitle>
+                <CardDescription className="text-zinc-400 uppercase text-[10px] font-black tracking-widest mt-1">
+                  Full Visibility • Real-time Transactions
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                       <thead className="bg-zinc-50 border-b border-zinc-100 text-[10px] font-black uppercase text-zinc-400 tracking-widest">
+                          <tr>
+                             <th className="px-6 py-4">Status</th>
+                             <th className="px-6 py-4">Buyer (Username)</th>
+                             <th className="px-6 py-4">UTR Number</th>
+                             <th className="px-6 py-4">Product</th>
+                             <th className="px-6 py-4">Referrer</th>
+                             <th className="px-6 py-4">Amount</th>
+                             <th className="px-6 py-4 text-right">Date</th>
+                          </tr>
+                       </thead>
+                       <tbody className="divide-y divide-zinc-100">
+                          {orders.map(order => {
+                            const referrer = sellers.find(s => s.uid === order.referrer_id);
+                            return (
+                               <tr key={order.id} className="hover:bg-zinc-50/50 transition-colors">
+                                  <td className="px-6 py-4">
+                                     <Badge className={`font-black text-[9px] uppercase ${
+                                       order.status === 'success' ? 'bg-green-100 text-green-700' : 
+                                       order.status === 'pending' ? 'bg-orange-100 text-orange-700' : 
+                                       'bg-red-100 text-red-700'
+                                     }`}>
+                                       {order.status}
+                                     </Badge>
+                                  </td>
+                                  <td className="px-6 py-4">
+                                     <p className="text-sm font-black text-zinc-900 italic uppercase underline decoration-zinc-200 underline-offset-4">
+                                       {order.buyer?.display_name || 'NO NAME'}
+                                     </p>
+                                     <p className="text-[10px] text-zinc-600 font-bold">{order.buyer?.email || 'NO EMAIL'}</p>
+                                     <p className="text-[7px] text-zinc-300 font-bold font-mono uppercase tracking-tighter">UID: {order.user_id}</p>
+                                  </td>
+                                  <td className="px-6 py-4">
+                                     <span className="font-mono text-zinc-600 bg-zinc-100 px-2 py-1 rounded-lg border border-zinc-200 text-xs">
+                                       {order.transaction_id || 'NO UTR'}
+                                     </span>
+                                  </td>
+                                  <td className="px-6 py-4">
+                                     <p className="text-xs font-bold text-zinc-900 line-clamp-1">{order.ebook?.title}</p>
+                                  </td>
+                                  <td className="px-6 py-4">
+                                     {order.referrer_id ? (
+                                       <div className="flex flex-col">
+                                          <p className="text-xs font-black text-blue-600 uppercase italic">
+                                             {order.referrer_profile?.display_name || (order.referrer_profile?.email?.split('@')[0]) || 'Affiliate'}
+                                          </p>
+                                          <p className="text-[8px] font-bold text-zinc-400 mt-0.5">ID: {order.referrer_id?.slice(0, 8)}</p>
+                                          <p className="text-[7px] text-blue-300 font-bold uppercase tracking-tighter">Verified Purchase Source</p>
+                                       </div>
+                                     ) : (
+                                       <span className="text-[10px] font-black text-zinc-300 uppercase tracking-widest italic">Direct Buy</span>
+                                     )}
+                                  </td>
+                                  <td className="px-6 py-4 text-xs font-black text-zinc-900">
+                                     ₹{order.amount}
+                                  </td>
+                                  <td className="px-6 py-4 text-right">
+                                     <p className="text-[10px] font-bold text-zinc-600">{new Date(order.created_at).toLocaleDateString()}</p>
+                                     <p className="text-[9px] text-zinc-400">{new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                                  </td>
+                               </tr>
+                            );
+                          })}
+                          {orders.length === 0 && (
+                            <tr>
+                               <td colSpan={7} className="px-6 py-20 text-center">
+                                  <Package className="w-12 h-12 text-zinc-100 mx-auto mb-4" />
+                                  <p className="text-zinc-400 font-black uppercase text-sm italic tracking-widest">No Transactions Found</p>
+                               </td>
+                            </tr>
+                          )}
+                       </tbody>
+                    </table>
+                </div>
+              </CardContent>
+           </Card>
+        </div>
+      )}
       {activeTab === 'utr' && (
         <div className="space-y-8 animate-in fade-in duration-500">
            <Card className="border-zinc-200 shadow-2xl">
@@ -628,9 +816,20 @@ export default function Admin() {
                                       </div>
                                       <h3 className="text-2xl font-black text-zinc-900">₹{order.amount}</h3>
                                       <div className="space-y-0.5">
-                                         <p className="text-sm font-bold text-zinc-700">{order.profiles?.display_name}</p>
+                                         <p className="text-sm font-black text-zinc-900 uppercase italic tracking-tight">
+                                           {order.buyer?.display_name || 'BUYER NAME MISSING'}
+                                         </p>
+                                         <p className="text-[10px] font-bold text-zinc-500">Email: {order.buyer?.email || 'No Email Registered'}</p>
+                                         <p className="text-[9px] font-medium text-zinc-400 italic">User ID: {order.user_id}</p>
                                          <p className="text-[10px] font-medium text-zinc-500 italic">{order.ebook?.title}</p>
-                                         <p className="text-xs font-black text-orange-600 mt-2 bg-orange-100/50 w-fit px-2 rounded">UTR: {order.transaction_id}</p>
+                                         <div className="flex items-center gap-2 mt-2">
+                                            <p className="text-xs font-black text-orange-600 bg-orange-100/50 w-fit px-2 rounded">UTR: {order.transaction_id}</p>
+                                            {order.referrer_id && (
+                                              <Badge className="bg-blue-50 text-blue-600 border-blue-100 h-5 text-[8px] font-black">
+                                                 REF: {order.referrer_profile?.display_name || 'Affiliate'}
+                                              </Badge>
+                                            )}
+                                         </div>
                                       </div>
                                    </div>
                                    <div className="flex flex-col justify-end items-end gap-3">
@@ -673,7 +872,10 @@ export default function Admin() {
 
                                    return (
                                      <tr key={o.id} className="text-xs font-bold text-zinc-600 hover:bg-white transition-colors">
-                                       <td className="px-6 py-4 font-black text-zinc-900 italic uppercase">{o.profiles?.display_name || 'Guest'}</td>
+                                       <td className="px-6 py-4">
+                                          <p className="font-black text-zinc-900 italic uppercase">{o.buyer?.display_name || 'N/A'}</p>
+                                          <p className="text-[9px] font-bold text-zinc-400">{o.buyer?.email || 'N/A'}</p>
+                                       </td>
                                        <td className="px-6 py-4">
                                           <span className="font-mono text-green-600 bg-green-50 px-2 py-1 rounded-lg border border-green-100">{o.transaction_id}</span>
                                        </td>
@@ -1213,7 +1415,7 @@ export default function Admin() {
                             <tr key={ref.id} className="hover:bg-zinc-50 transition-colors">
                               <td className="px-4 py-3">
                                 <div>
-                                  <p className="text-xs font-black text-zinc-900">{ref.profiles?.display_name || 'Quick Buyer'}</p>
+                                  <p className="text-xs font-black text-zinc-900">{ref.buyer?.display_name || 'Quick Buyer'}</p>
                                   <p className="text-[8px] font-mono text-zinc-400">UID: {ref.user_id?.slice(-8)}</p>
                                 </div>
                               </td>

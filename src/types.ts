@@ -39,7 +39,9 @@ export interface Order {
   status: string;
   created_at: string;
   ebook?: Ebook;
-  profiles?: Profile;
+  profiles?: Profile; // Keeping for backward compatibility if needed
+  buyer?: Profile;
+  referrer_profile?: Profile;
 }
 
 export interface Review {
