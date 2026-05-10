@@ -380,16 +380,6 @@ export default function App() {
 
   useEffect(() => {
     const initializeAuth = async () => {
-      // CLEAR STALE LOCAL STORAGE: Since we moved to sessionStorage, we must ensure
-      // that NO residues from previous localStorage-based sessions exist.
-      if (typeof window !== 'undefined') {
-        Object.keys(localStorage).forEach(key => {
-          if (key.includes('supabase.auth.token') || key.startsWith('sb-')) {
-            localStorage.removeItem(key);
-          }
-        });
-      }
-
       if (!isSupabaseConfigured) {
         setLoading(false);
         return;
@@ -401,9 +391,9 @@ export default function App() {
           if (error.message.includes('Refresh Token Not Found') || error.message.includes('invalid_refresh_token')) {
             console.warn('Invalid session detected, clearing storage...');
             // Attempt to clear common supabase storage keys just in case
-            Object.keys(sessionStorage).forEach(key => {
+            Object.keys(localStorage).forEach(key => {
               if (key.includes('supabase.auth.token') || key.startsWith('sb-')) {
-                sessionStorage.removeItem(key);
+                localStorage.removeItem(key);
               }
             });
             // Force a sign out to clear any internal SDK state

@@ -1,9 +1,9 @@
-import React, { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
+import { GoogleGenAI } from "@google/genai";
 import { Sparkles, Send, X, Bot, User as UserIcon, Loader2, MessageCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
-import { getAIResponse } from '../services/aiService';
 
 interface Message {
   role: 'user' | 'ai';
@@ -14,6 +14,8 @@ interface AIHelperProps {
   user: any;
   isAdmin: boolean;
 }
+
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
 
 export default function AIHelper({ user, isAdmin }: AIHelperProps) {
   const [isOpen, setIsOpen] = useState(false);
@@ -39,22 +41,50 @@ export default function AIHelper({ user, isAdmin }: AIHelperProps) {
     setMessages(prev => [...prev, { role: 'user', text: userMessage }]);
     setIsLoading(true);
 
-    const history = messages.map(m => ({ 
-      role: m.role === 'user' ? 'user' : 'model', 
-      text: m.text 
-    }));
-
-    const aiResponse = await getAIResponse(userMessage, history);
-    
-    setMessages(prev => [...prev, { role: 'ai', text: aiResponse || 'I am sorry, something went wrong.' }]);
-    setIsLoading(false);
+    try {
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: messages.concat({ role: 'user', text: userMessage }).map(m => ({
+          role: m.role === 'user' ? 'user' : 'model',
+          parts: [{ text: m.text }]
+        })),
+        config: {
+          systemInstruction: `You are PUSTAK Assist, the official AI guide for PUSTAK - India's Premium Ebook Marketplace.
+          Your tone is professional, helpful, slightly bold, and focuses on "intellectual dominance" and "market success".
+          
+          Key Information:
+          - PUSTAK sells digital ebooks.
+          - Payments are via UPI and require manual UTR (Transaction ID) verification by admins.
+          - Verification usually takes 5-30 minutes.
+          - Users are verified for ebooks in their 'My Library' or 'Orders' section once paid.
+          - Sellers can register, upload ebooks, and sets prices.
+          - Minimum withdrawal for sellers is ₹500.
+          - PUSTAK offers an affiliate system where users earn commissions by sharing referral links.
+          - Support email: support@pustak.online
+          
+          Guidelines:
+          - Keep responses concise and formatted with bold text for emphasis.
+          - If asked about technical issues, mention the 'Bug Hunter' system.
+          - Encourage users to check out the 'Dashboard' for insights.
+          - Use Indian terms like 'Namaste' or 'Rupees (₹)' appropriately.`
+        }
+      });
+      
+      const aiText = response.text || 'I am sorry, I am having trouble connecting to my brain.';
+      setMessages(prev => [...prev, { role: 'ai', text: aiText }]);
+    } catch (error) {
+      console.error('AI Error:', error);
+      setMessages(prev => [...prev, { role: 'ai', text: 'I am sorry, something went wrong. Please try again later.' }]);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
       <motion.div
         drag={typeof window !== 'undefined' && window.innerWidth > 768}
-        dragConstraints={{ left: -window.innerWidth + 80, right: 0, top: -window.innerHeight + 150, bottom: 0 }}
-        className="fixed bottom-24 right-5 sm:bottom-24 sm:right-5 z-[100] flex flex-col items-end"
+        dragMomentum={false}
+        className="fixed bottom-24 right-5 z-[100] flex flex-col items-end"
       >
         <AnimatePresence>
           {isOpen && (
