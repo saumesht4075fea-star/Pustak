@@ -32,9 +32,19 @@ export default function Orders({ user }: { user: User | null }) {
   const [comment, setComment] = useState('');
   const [numPages, setNumPages] = useState<number | null>(null);
   const [pageNumber, setPageNumber] = useState(1);
-  const [scale, setScale] = useState(1.0);
+  const [scale, setScale] = useState(window.innerWidth < 640 ? 0.6 : 1.0);
   const [isReaderLoading, setIsReaderLoading] = useState(true);
   const [direction, setDirection] = useState(0);
+
+  // Responsive scale update
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth < 640) setScale(0.6);
+      else setScale(1.0);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   function onDocumentLoadSuccess({ numPages }: { numPages: number }) {
     setNumPages(numPages);
@@ -52,21 +62,34 @@ export default function Orders({ user }: { user: User | null }) {
 
   const variants = {
     initial: (direction: number) => ({
-      rotateY: direction > 0 ? -90 : 90,
+      rotateY: direction > 0 ? -120 : 120,
       opacity: 0,
-      x: direction > 0 ? 50 : -50,
+      scale: 0.9,
+      x: direction > 0 ? 100 : -100,
       originX: direction > 0 ? 0 : 1,
     }),
     animate: {
       rotateY: 0,
       opacity: 1,
+      scale: 1,
       x: 0,
+      transition: {
+        rotateY: { type: "spring", stiffness: 45, damping: 20 },
+        opacity: { duration: 0.3 },
+        default: { duration: 0.5 }
+      }
     },
     exit: (direction: number) => ({
-      rotateY: direction > 0 ? 90 : -90,
+      rotateY: direction > 0 ? 120 : -120,
       opacity: 0,
-      x: direction > 0 ? -50 : 50,
+      scale: 0.9,
+      x: direction > 0 ? -100 : 100,
       originX: direction > 0 ? 1 : 0,
+      transition: {
+        rotateY: { type: "spring", stiffness: 45, damping: 20 },
+        opacity: { duration: 0.3 },
+        default: { duration: 0.5 }
+      }
     }),
   };
 
@@ -460,9 +483,11 @@ export default function Orders({ user }: { user: User | null }) {
                           className="absolute inset-y-0 right-0 w-[50%] z-10 cursor-alias"
                           whileHover={{ backgroundColor: 'rgba(0,0,0,0.02)' }}
                           onClick={(e) => { e.stopPropagation(); changePage(1); }}
-                        />
-
-                        <div className="shadow-[0_0_50px_rgba(0,0,0,0.3)] bg-white">
+                        />                        <div className="shadow-[0_0_50px_rgba(0,0,0,0.3)] bg-white relative max-h-[70vh] overflow-auto custom-scrollbar">
+                          {/* Inner page shadow/fold */}
+                          <div className="absolute inset-y-0 left-0 w-8 bg-gradient-to-r from-black/10 to-transparent z-10 pointer-events-none" />
+                          <div className="absolute inset-y-0 left-4 w-1 bg-black/5 blur-sm z-10 pointer-events-none" />
+                          
                           <AnimatePresence mode="wait" custom={direction}>
                             <motion.div
                               key={pageNumber}
@@ -472,7 +497,7 @@ export default function Orders({ user }: { user: User | null }) {
                               animate="animate"
                               exit="exit"
                               transition={{ duration: 0.5, ease: [0.645, 0.045, 0.355, 1.000] }}
-                              className="relative"
+                              className="relative min-w-max"
                             >
                               <div className="absolute inset-y-0 left-0 w-8 bg-gradient-to-r from-black/20 to-transparent pointer-events-none z-[5]" />
                               <Page 
@@ -480,7 +505,7 @@ export default function Orders({ user }: { user: User | null }) {
                                 scale={scale} 
                                 renderAnnotationLayer={false}
                                 renderTextLayer={false}
-                                className="max-w-full"
+                                className="shadow-2xl"
                                 loading={<div className="h-[60vh] w-[400px] bg-white animate-pulse" />}
                               />
                             </motion.div>

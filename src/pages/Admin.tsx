@@ -426,7 +426,7 @@ export default function Admin() {
   const NavItem = ({ id, label, icon: Icon }: { id: AdminTab, label: string, icon: any }) => (
     <button
       onClick={() => setActiveTab(id)}
-      className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-black transition-all ${
+      className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-black transition-all whitespace-nowrap ${
         activeTab === id 
           ? 'bg-zinc-900 text-white shadow-lg shadow-zinc-900/20' 
           : 'text-zinc-500 hover:bg-zinc-100'
@@ -444,7 +444,7 @@ export default function Admin() {
           <h1 className="text-4xl font-black tracking-tight text-zinc-900">Admin Command</h1>
           <p className="text-zinc-500 font-bold uppercase text-[10px] tracking-widest mt-1">Control Center • Verified Operations</p>
         </div>
-        <div className="flex flex-wrap gap-2 bg-zinc-50 p-1.5 rounded-2xl border border-zinc-100">
+        <div className="flex overflow-x-auto pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 scrollbar-hide gap-2 bg-zinc-50 p-1.5 rounded-2xl border border-zinc-100">
           <NavItem id="overview" label="Dashboard" icon={LayoutDashboard} />
           <NavItem id="revenue" label="Revenue History" icon={IndianRupee} />
           <NavItem id="orders" label="All Orders" icon={History} />
@@ -981,39 +981,59 @@ export default function Admin() {
       )}
 
       {activeTab === 'payouts' && (
-        <div className="space-y-8 animate-in slide-in-from-right-4 duration-500">
-           <Card className="border-zinc-200 shadow-xl ring-4 ring-blue-50">
-              <CardHeader className="bg-blue-600 text-white rounded-t-3xl border-b-4 border-blue-700">
-                <CardTitle className="text-2xl font-black">Verified Payout Queue</CardTitle>
-                <CardDescription className="text-blue-100">Process withdrawals for successful affiliates.</CardDescription>
+        <div className="space-y-8 animate-in slide-in-from-right-4 duration-500 max-w-4xl mx-auto px-1 sm:px-0">
+           <Card className="border-none shadow-2xl rounded-[2.5rem] bg-white overflow-hidden">
+              <CardHeader className="bg-zinc-900 text-white p-6 sm:p-8">
+                <CardTitle className="text-xl sm:text-2xl font-black flex items-center gap-2">
+                  <CreditCard className="w-6 h-6 text-blue-500" />
+                  Live Payout Requests
+                </CardTitle>
+                <CardDescription className="text-zinc-400 font-bold uppercase text-[10px] tracking-widest mt-1">Pending Affiliate Withdrawals</CardDescription>
               </CardHeader>
-              <CardContent className="p-6 space-y-4">
+              <CardContent className="p-4 sm:p-8 space-y-6">
                   {withdrawals.filter(w => w.status === 'pending').map((w) => (
-                    <div key={w.id} className="p-6 bg-white rounded-3xl border-2 border-zinc-100 shadow-sm space-y-4">
-                        <div className="flex justify-between items-start">
-                          <div>
-                             <p className="text-4xl font-black text-zinc-900">₹{w.amount}</p>
-                             <div className="bg-blue-50 p-2 rounded-xl border border-blue-100 mt-2">
-                                <p className="text-sm font-black text-blue-700">{w.upi_id}</p>
+                    <div key={w.id} className="p-5 sm:p-8 bg-zinc-50 rounded-[2rem] border border-zinc-100 space-y-6">
+                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+                          <div className="space-y-3 w-full md:w-auto">
+                             <div className="space-y-1">
+                                <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Withdrawal Amount</p>
+                                <p className="text-4xl sm:text-5xl font-black text-blue-600 italic tracking-tighter">₹{w.amount}</p>
                              </div>
-                             {w.mobile_number && <p className="text-xs font-black text-zinc-400 mt-2">Mob: {w.mobile_number}</p>}
+                             <div className="bg-white p-3 rounded-2xl border border-zinc-200 shadow-sm inline-block w-full sm:w-auto">
+                                <p className="text-[10px] font-black text-zinc-400 uppercase mb-1">UPI ADDRESS</p>
+                                <p className="text-sm font-black text-zinc-900 font-mono tracking-tight">{w.upi_id}</p>
+                             </div>
+                             {w.mobile_number && <p className="text-[10px] font-black text-zinc-400 uppercase">Registered Mobile: {w.mobile_number}</p>}
                           </div>
-                          <div className="text-right">
-                            <p className="text-sm font-black text-zinc-900">{w.profiles?.display_name}</p>
-                            <p className="text-[10px] text-zinc-400 font-bold uppercase">{w.email_id || w.profiles?.email}</p>
+                          
+                          <div className="text-left md:text-right space-y-4 w-full md:w-auto">
+                            <div className="flex items-center md:justify-end gap-3">
+                               <div className="w-10 h-10 bg-zinc-200 rounded-xl" />
+                               <div>
+                                  <p className="text-sm font-black text-zinc-900 uppercase italic tracking-tight">{w.profiles?.display_name}</p>
+                                  <p className="text-[10px] text-zinc-400 font-bold">{w.email_id || w.profiles?.email}</p>
+                               </div>
+                            </div>
+                            
                             {w.purchase_utr && (
-                              <div className="mt-2 bg-orange-50 px-2 py-1 rounded border border-orange-100">
+                              <div className="bg-orange-50 px-3 py-2 rounded-xl border border-orange-100 inline-block md:block">
                                 <p className="text-[9px] font-black text-orange-600 uppercase">Verification UTR</p>
-                                <p className="text-[10px] font-bold text-orange-700">{w.purchase_utr}</p>
+                                <p className="text-xs font-bold text-orange-700 font-mono">{w.purchase_utr}</p>
                               </div>
                             )}
                           </div>
                         </div>
-                        <Button className="w-full bg-blue-600 hover:bg-blue-700 h-12 rounded-2xl font-black shadow-lg shadow-blue-600/20" onClick={() => handleApproveWithdrawal(w)}>DISBURSE PAYMENT</Button>
+                        <Button 
+                          className="w-full bg-blue-600 hover:bg-blue-700 h-14 rounded-2xl font-black text-sm shadow-xl shadow-blue-600/20 gap-2" 
+                          onClick={() => handleApproveWithdrawal(w)}
+                        >
+                          <CheckCircle2 className="w-5 h-5" />
+                          CONFIRM & DISBURSE PAYMENT
+                        </Button>
                     </div>
                   ))}
                   {withdrawals.filter(w => w.status === 'pending').length === 0 && (
-                    <div className="py-20 text-center text-zinc-400 font-bold italic">All payouts completed.</div>
+                    <div className="py-20 text-center text-zinc-400 font-black uppercase tracking-widest text-sm opacity-30 italic">No Pending Payouts</div>
                   )}
 
                   {/* Withdrawal history */}
@@ -1499,47 +1519,73 @@ export default function Admin() {
       </Dialog>
 
       <Dialog open={isEditing} onOpenChange={setIsEditing}>
-        <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto rounded-3xl">
-          <DialogHeader><DialogTitle className="text-xl font-black">Edit Asset Configuration</DialogTitle></DialogHeader>
-          <form onSubmit={handleEditEbook} className="space-y-4 pt-4">
-             <div className="space-y-1">
-                <Label className="text-[10px] font-black uppercase text-zinc-400">Asset Title</Label>
-                <Input value={editFormData.title} onChange={e => setEditFormData({...editFormData, title: e.target.value})} className="h-12 rounded-xl" />
-             </div>
-             <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <Label className="text-[10px] font-black uppercase text-zinc-400">Price (INR)</Label>
-                  <Input type="number" value={editFormData.price} onChange={e => setEditFormData({...editFormData, price: Number(e.target.value)})} className="h-12 rounded-xl" />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-[10px] font-black uppercase text-zinc-400">Reward (INR)</Label>
-                  <Input type="number" value={editFormData.commission_amount} onChange={e => setEditFormData({...editFormData, commission_amount: Number(e.target.value)})} className="h-12 rounded-xl" />
-                </div>
-             </div>
-             
+        <DialogContent className="sm:max-w-[500px] w-[95vw] max-h-[90vh] overflow-y-auto rounded-3xl p-0 border-none shadow-2xl">
+          <div className="bg-zinc-900 p-6 sm:p-8 text-white relative overflow-hidden">
+            <div className="absolute top-0 right-0 p-8 opacity-10 rotate-12">
+              <Package className="w-24 h-24" />
+            </div>
+            <DialogHeader className="relative z-10">
+              <DialogTitle className="text-xl sm:text-2xl font-black uppercase italic text-white flex items-center gap-2">
+                <Pencil className="w-5 h-5 text-orange-500" />
+                Asset Synchronizer
+              </DialogTitle>
+              <DialogDescription className="text-zinc-400 font-bold uppercase text-[10px] tracking-widest mt-1">Refine and Update Global Inventory</DialogDescription>
+            </DialogHeader>
+          </div>
 
+          <form onSubmit={handleEditEbook} className="p-6 sm:p-8 space-y-6 bg-white">
              <div className="space-y-4">
-                <div className="p-4 border-2 border-dashed border-zinc-200 rounded-2xl text-center">
-                   <Label className="text-[10px] font-black mb-2 block uppercase text-zinc-400">Update Assets (Optional)</Label>
-                   <div className="flex gap-2 justify-center">
-                      <Button type="button" variant="outline" className="h-10 rounded-xl relative overflow-hidden">
-                        Change Cover
-                        <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" accept="image/*" onChange={(e) => e.target.files && handleFileUpload(e.target.files[0], 'cover', true)} />
-                      </Button>
-                      <Button type="button" variant="outline" className="h-10 rounded-xl relative overflow-hidden">
-                        Change PDF
-                        <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" accept="application/pdf" onChange={(e) => e.target.files && handleFileUpload(e.target.files[0], 'ebook', true)} />
-                      </Button>
-                   </div>
-                   {(editFormData.cover_url !== editingEbook?.cover_url || editFormData.file_url !== editingEbook?.file_url) && 
-                    <p className="text-[10px] font-bold text-orange-600 mt-2">New Files Uploaded ✓</p>
-                   }
-                </div>
+               <div className="space-y-1">
+                  <Label className="text-[10px] font-black uppercase text-zinc-400 ml-1">Asset Identity (Title)</Label>
+                  <Input value={editFormData.title} onChange={e => setEditFormData({...editFormData, title: e.target.value})} className="h-12 rounded-xl border-2 focus:border-zinc-900 border-zinc-100 font-bold" />
+               </div>
+               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <Label className="text-[10px] font-black uppercase text-zinc-400 ml-1">Market Price (INR)</Label>
+                    <Input type="number" value={editFormData.price} onChange={e => setEditFormData({...editFormData, price: Number(e.target.value)})} className="h-12 rounded-xl border-2 focus:border-zinc-900 border-zinc-100 font-black" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-[10px] font-black uppercase text-zinc-400 ml-1">Affiliate Reward (INR)</Label>
+                    <Input type="number" value={editFormData.commission_amount} onChange={e => setEditFormData({...editFormData, commission_amount: Number(e.target.value)})} className="h-12 rounded-xl border-2 focus:border-zinc-900 border-zinc-100 font-black" />
+                  </div>
+               </div>
+               
+               <div className="space-y-1">
+                  <Label className="text-[10px] font-black uppercase text-zinc-400 ml-1">Asset Description</Label>
+                  <Textarea value={editFormData.description} onChange={e => setEditFormData({...editFormData, description: e.target.value})} className="rounded-xl h-32 border-2 focus:border-zinc-900 border-zinc-100 font-medium" />
+               </div>
+
+               <div className="space-y-3">
+                  <Label className="text-[10px] font-black uppercase text-zinc-400 ml-1">Update Binary Assets</Label>
+                  <div className="p-5 border-2 border-dashed border-zinc-200 rounded-2xl text-center bg-zinc-50 space-y-4">
+                     <div className="flex flex-col sm:flex-row gap-3">
+                        <Button type="button" variant="outline" className="flex-1 h-12 rounded-xl relative overflow-hidden bg-white hover:bg-zinc-100 font-bold gap-2">
+                          <ImageIcon className="w-4 h-4" />
+                          Update Cover
+                          <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" accept="image/*" onChange={(e) => e.target.files && handleFileUpload(e.target.files[0], 'cover', true)} />
+                        </Button>
+                        <Button type="button" variant="outline" className="flex-1 h-12 rounded-xl relative overflow-hidden bg-white hover:bg-zinc-100 font-black text-orange-600 border-orange-100 gap-2">
+                          <Upload className="w-4 h-4" />
+                          Replace PDF
+                          <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" accept="application/pdf" onChange={(e) => e.target.files && handleFileUpload(e.target.files[0], 'ebook', true)} />
+                        </Button>
+                     </div>
+                     {(editFormData.cover_url !== editingEbook?.cover_url || editFormData.file_url !== editingEbook?.file_url) && (
+                      <div className="flex items-center justify-center gap-2 text-green-600 animate-pulse">
+                        <BadgeCheck className="w-4 h-4" />
+                        <span className="text-[10px] font-black uppercase">Changes detected - pending sync</span>
+                      </div>
+                     )}
+                  </div>
+               </div>
              </div>
 
-             <Button type="submit" className="w-full bg-orange-600 text-white hover:bg-orange-700 font-black h-12 rounded-2xl" disabled={isUploading}>
-                {isUploading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : 'SYNCHRONIZE CHANGES'}
-             </Button>
+             <div className="flex flex-col sm:flex-row gap-3 pt-4">
+               <Button type="button" variant="ghost" className="h-12 flex-1 font-bold text-zinc-400" onClick={() => setIsEditing(false)}>CANCEL</Button>
+               <Button type="submit" className="h-14 flex-[2] bg-orange-600 text-white hover:bg-orange-700 font-black rounded-2xl shadow-xl shadow-orange-600/20 gap-2" disabled={isUploading}>
+                  {isUploading ? <Loader2 className="w-5 h-5 animate-spin" /> : <><History className="w-5 h-5" /> SYNC ASSET</>}
+               </Button>
+             </div>
           </form>
         </DialogContent>
       </Dialog>

@@ -346,34 +346,43 @@ export default function SellerDashboard({ user, isAdmin, isSeller }: { user: Use
                 WITHDRAW NOW
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[425px] rounded-[2rem]">
-              <DialogHeader>
-                <DialogTitle className="text-2xl font-black uppercase italic">Withdraw Earnings</DialogTitle>
-                <DialogDescription>
-                  Enter your UPI details to request a withdrawal. Min: ₹100.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-6 py-6">
-                <div className="p-4 bg-zinc-50 rounded-2xl border border-zinc-100 flex items-center justify-between">
-                  <p className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Available Balance</p>
-                  <p className="text-2xl font-black text-zinc-900">₹{totalBalance}</p>
+            <DialogContent className="sm:max-w-[425px] rounded-[2rem] max-h-[90vh] overflow-y-auto p-0 border-none shadow-2xl">
+              <div className="bg-zinc-900 border-b border-zinc-800 p-8 text-white relative overflow-hidden">
+                <div className="absolute top-0 right-0 p-8 opacity-10 rotate-12">
+                  <Wallet className="w-24 h-24" />
                 </div>
+                <div className="relative z-10">
+                  <DialogHeader className="p-0">
+                    <DialogTitle className="text-2xl font-black uppercase italic text-white">Withdraw Earnings</DialogTitle>
+                    <DialogDescription className="text-zinc-400 font-medium">
+                      Enter your UPI details to request a withdrawal. Min: ₹100.
+                    </DialogDescription>
+                  </DialogHeader>
+                  
+                  <div className="mt-8 flex items-center justify-between p-4 bg-white/5 backdrop-blur-md rounded-2xl border border-white/10">
+                    <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest leading-none">Available Balance</p>
+                    <p className="text-2xl font-black text-white italic">₹{totalBalance}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-6 sm:p-8 space-y-6 bg-white">
                 <div className="space-y-4">
                   <div className="space-y-2">
                     <Label className="font-bold text-zinc-600 ml-1 text-xs uppercase tracking-wider">UPI ID (to receive payment)</Label>
                     <Input 
                       placeholder="name@upi" 
-                      className="h-12 rounded-xl border-2 focus:border-zinc-900 border-zinc-100 font-medium"
+                      className="h-12 rounded-xl border-2 focus:border-zinc-900 border-zinc-100 font-black text-sm uppercase italic"
                       value={upiId}
                       onChange={(e) => setUpiId(e.target.value)}
                     />
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label className="font-bold text-zinc-600 ml-1 text-xs uppercase tracking-wider">Mobile Number</Label>
                       <Input 
                         placeholder="10-digit mobile" 
-                        className="h-12 rounded-xl border-2 focus:border-zinc-900 border-zinc-100 font-medium"
+                        className="h-12 rounded-xl border-2 focus:border-zinc-900 border-zinc-100 font-bold"
                         value={mobileNumber}
                         onChange={(e) => setMobileNumber(e.target.value.replace(/\D/g, '').slice(0, 10))}
                       />
@@ -382,7 +391,7 @@ export default function SellerDashboard({ user, isAdmin, isSeller }: { user: Use
                       <Label className="font-bold text-zinc-600 ml-1 text-xs uppercase tracking-wider">Email ID</Label>
                       <Input 
                         placeholder="email@example.com" 
-                        className="h-12 rounded-xl border-2 focus:border-zinc-900 border-zinc-100 font-medium"
+                        className="h-12 rounded-xl border-2 focus:border-zinc-900 border-zinc-100 font-bold"
                         value={emailId}
                         onChange={(e) => setEmailId(e.target.value)}
                       />
@@ -392,7 +401,7 @@ export default function SellerDashboard({ user, isAdmin, isSeller }: { user: Use
                     <Label className="font-bold text-zinc-600 ml-1 text-xs uppercase tracking-wider">Your Purchase UTR (to verify account)</Label>
                     <Input 
                       placeholder="12-digit UTR from your purchase" 
-                      className="h-12 rounded-xl border-2 focus:border-zinc-900 border-zinc-100 font-medium"
+                      className="h-12 rounded-xl border-2 focus:border-zinc-900 border-zinc-100 font-mono font-bold"
                       value={purchaseUtr}
                       onChange={(e) => setPurchaseUtr(e.target.value.replace(/\D/g, '').slice(0, 12))}
                     />
@@ -402,27 +411,27 @@ export default function SellerDashboard({ user, isAdmin, isSeller }: { user: Use
                     <Input 
                       type="number"
                       placeholder="Enter amount" 
-                      className="h-12 rounded-xl border-2 focus:border-zinc-900 border-zinc-100 font-black text-lg"
+                      className="h-12 rounded-xl border-2 focus:border-zinc-900 border-zinc-100 font-black text-xl"
                       value={withdrawAmount}
                       onChange={(e) => setWithdrawAmount(e.target.value)}
                     />
                   </div>
                 </div>
+                
                 <div className="bg-orange-50 p-4 rounded-xl border border-orange-100">
                   <p className="text-[10px] font-bold text-orange-800 leading-relaxed uppercase italic">
                     Note: Company will process the payment after verifying the transaction. Admin fee of ₹60 is already deducted from the sale price.
                   </p>
                 </div>
-              </div>
-              <DialogFooter>
+
                 <Button 
-                  className="w-full h-14 rounded-2xl bg-zinc-900 hover:bg-black font-black text-lg"
+                  className="w-full h-14 rounded-2xl bg-zinc-900 hover:bg-black font-black text-lg shadow-xl shadow-zinc-900/20 gap-2"
                   disabled={isSubmittingWithdraw || !upiId || !withdrawAmount}
                   onClick={handleRequestWithdrawal}
                 >
-                  {isSubmittingWithdraw ? <Loader2 className="w-5 h-5 animate-spin" /> : 'SUBMIT REQUEST'}
+                  {isSubmittingWithdraw ? <Loader2 className="w-5 h-5 animate-spin" /> : <><Wallet className="w-5 h-5" /> SUBMIT REQUEST</>}
                 </Button>
-              </DialogFooter>
+              </div>
             </DialogContent>
           </Dialog>
           <Button 
