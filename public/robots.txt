@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://pustak.online/sitemap.xml

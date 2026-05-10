@@ -76,9 +76,7 @@ async function startServer() {
     const distPath = path.join(process.cwd(), "dist");
     
     // Serve static files
-    app.use(express.static(distPath, {
-      index: false // Don't serve index.html via static middleware, let the wildcard handle it
-    }));
+    app.use(express.static(distPath));
     
     app.get("*", (req, res) => {
       res.sendFile(path.join(distPath, "index.html"));
