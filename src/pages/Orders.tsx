@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { User } from '@supabase/supabase-js';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { pdfjs, Document, Page } from 'react-pdf';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
@@ -34,11 +34,41 @@ export default function Orders({ user }: { user: User | null }) {
   const [pageNumber, setPageNumber] = useState(1);
   const [scale, setScale] = useState(1.0);
   const [isReaderLoading, setIsReaderLoading] = useState(true);
+  const [direction, setDirection] = useState(0);
 
   function onDocumentLoadSuccess({ numPages }: { numPages: number }) {
     setNumPages(numPages);
     setIsReaderLoading(false);
   }
+
+  const changePage = (offset: number) => {
+    if (!numPages) return;
+    const newPage = pageNumber + offset;
+    if (newPage >= 1 && newPage <= numPages) {
+      setDirection(offset);
+      setPageNumber(newPage);
+    }
+  };
+
+  const variants = {
+    initial: (direction: number) => ({
+      rotateY: direction > 0 ? -90 : 90,
+      opacity: 0,
+      x: direction > 0 ? 50 : -50,
+      originX: direction > 0 ? 0 : 1,
+    }),
+    animate: {
+      rotateY: 0,
+      opacity: 1,
+      x: 0,
+    },
+    exit: (direction: number) => ({
+      rotateY: direction > 0 ? 90 : -90,
+      opacity: 0,
+      x: direction > 0 ? -50 : 50,
+      originX: direction > 0 ? 1 : 0,
+    }),
+  };
 
   // Convert base64 to Blob URL for better stability in Chrome
   useEffect(() => {
@@ -350,15 +380,14 @@ export default function Orders({ user }: { user: User | null }) {
             
             <div className="flex-grow bg-zinc-100 relative overflow-hidden flex flex-col">
               {readingBlobUrl ? (
-                <div className="flex flex-col h-full">
-                  {/* Reader Controls */}
-                  <div className="bg-white border-b border-zinc-200 p-2 flex items-center justify-between px-4 shrink-0">
+                <div className="flex flex-col h-full"> {/* Reader Controls */}
+                  <div className="bg-white border-b border-zinc-200 p-2 flex items-center justify-between px-4 shrink-0 z-20">
                     <div className="flex items-center gap-2">
                        <Button 
                          variant="ghost" 
                          size="sm" 
                          disabled={pageNumber <= 1}
-                         onClick={() => setPageNumber(prev => Math.max(prev - 1, 1))}
+                         onClick={() => changePage(-1)}
                          className="h-8 w-8 p-0"
                        >
                          <ChevronLeft className="w-4 h-4" />
@@ -370,7 +399,7 @@ export default function Orders({ user }: { user: User | null }) {
                          variant="ghost" 
                          size="sm" 
                          disabled={numPages ? pageNumber >= numPages : false}
-                         onClick={() => setPageNumber(prev => numPages ? Math.min(prev + 1, numPages) : prev)}
+                         onClick={() => changePage(1)}
                          className="h-8 w-8 p-0"
                        >
                          <ChevronRight className="w-4 h-4" />
@@ -393,6 +422,7 @@ export default function Orders({ user }: { user: User | null }) {
                       className="text-[10px] h-7 font-black border-red-200 text-red-600 hover:bg-red-50"
                       onClick={() => {
                         setPageNumber(1);
+                        setDirection(0);
                         const currentRef = readingBlobUrl;
                         setReadingBlobUrl(null);
                         setTimeout(() => setReadingBlobUrl(currentRef), 100);
@@ -403,62 +433,82 @@ export default function Orders({ user }: { user: User | null }) {
                   </div>
 
                   {/* Book Viewport */}
-                  <div className="flex-grow overflow-auto bg-zinc-200 p-4 flex justify-center items-start">
-                    <motion.div 
-                      key={pageNumber}
-                      initial={{ opacity: 0, rotateY: -30, x: 20 }}
-                      animate={{ opacity: 1, rotateY: 0, x: 0 }}
-                      transition={{ type: "spring", damping: 20, stiffness: 100 }}
-                      className="shadow-2xl bg-white origin-left"
-                      style={{ perspective: "1000px" }}
+                  <div className="flex-grow relative bg-zinc-200 overflow-hidden flex justify-center items-center overflow-auto p-4" style={{ perspective: "2000px" }}>
+                    <Document
+                      file={readingBlobUrl}
+                      onLoadSuccess={onDocumentLoadSuccess}
+                      loading={
+                        <div className="h-[60vh] w-[400px] flex items-center justify-center bg-white shadow-xl rounded-lg">
+                          <Loader2 className="w-8 h-8 animate-spin text-orange-600" />
+                        </div>
+                      }
+                      error={
+                        <div className="h-[60vh] w-[400px] flex flex-col items-center justify-center bg-white p-8 text-center shadow-xl rounded-lg">
+                          <XCircle className="w-12 h-12 text-red-500 mb-4" />
+                          <p className="font-bold text-zinc-900">Failed to load PDF</p>
+                          <p className="text-sm text-zinc-500">Please try download option.</p>
+                        </div>
+                      }
                     >
-                      <Document
-                        file={readingBlobUrl}
-                        onLoadSuccess={onDocumentLoadSuccess}
-                        loading={
-                          <div className="h-[60vh] w-[400px] flex items-center justify-center bg-white">
-                            <Loader2 className="w-8 h-8 animate-spin text-orange-600" />
-                          </div>
-                        }
-                        error={
-                          <div className="h-[60vh] w-[400px] flex flex-col items-center justify-center bg-white p-8 text-center">
-                            <XCircle className="w-12 h-12 text-red-500 mb-4" />
-                            <p className="font-bold text-zinc-900">Failed to load PDF</p>
-                            <p className="text-sm text-zinc-500">Please try downloading the file instead.</p>
-                          </div>
-                        }
-                      >
-                        <Page 
-                          pageNumber={pageNumber} 
-                          scale={scale} 
-                          renderAnnotationLayer={false}
-                          renderTextLayer={false}
-                          className="max-w-full"
-                          loading={<div className="h-[60vh] w-[400px] bg-white animate-pulse" />}
+                      <div className="relative">
+                        <motion.div 
+                          className="absolute inset-y-0 left-0 w-[50%] z-10 cursor-alias"
+                          whileHover={{ backgroundColor: 'rgba(0,0,0,0.02)' }}
+                          onClick={(e) => { e.stopPropagation(); changePage(-1); }}
                         />
-                      </Document>
-                    </motion.div>
+                        <motion.div 
+                          className="absolute inset-y-0 right-0 w-[50%] z-10 cursor-alias"
+                          whileHover={{ backgroundColor: 'rgba(0,0,0,0.02)' }}
+                          onClick={(e) => { e.stopPropagation(); changePage(1); }}
+                        />
+
+                        <div className="shadow-[0_0_50px_rgba(0,0,0,0.3)] bg-white">
+                          <AnimatePresence mode="wait" custom={direction}>
+                            <motion.div
+                              key={pageNumber}
+                              custom={direction}
+                              variants={variants}
+                              initial="initial"
+                              animate="animate"
+                              exit="exit"
+                              transition={{ duration: 0.5, ease: [0.645, 0.045, 0.355, 1.000] }}
+                              className="relative"
+                            >
+                              <div className="absolute inset-y-0 left-0 w-8 bg-gradient-to-r from-black/20 to-transparent pointer-events-none z-[5]" />
+                              <Page 
+                                pageNumber={pageNumber} 
+                                scale={scale} 
+                                renderAnnotationLayer={false}
+                                renderTextLayer={false}
+                                className="max-w-full"
+                                loading={<div className="h-[60vh] w-[400px] bg-white animate-pulse" />}
+                              />
+                            </motion.div>
+                          </AnimatePresence>
+                        </div>
+                      </div>
+                    </Document>
                   </div>
 
-                  {/* Desktop Navigation Helper */}
-                  <div className="absolute inset-y-0 left-0 w-20 flex items-center justify-center group pointer-events-none">
+                  {/* Desktop Side Navigation Visuals */}
+                  <div className="absolute inset-y-0 left-0 w-12 flex items-center justify-center group z-30 pointer-events-none">
                      <Button 
                        variant="ghost" 
-                       className="pointer-events-auto h-20 w-12 bg-black/5 opacity-0 group-hover:opacity-100 rounded-r-3xl rounded-l-none"
-                       onClick={() => setPageNumber(prev => Math.max(prev - 1, 1))}
+                       className="pointer-events-auto h-24 w-10 bg-black/10 backdrop-blur-sm opacity-0 group-hover:opacity-100 rounded-r-3xl rounded-l-none transition-all hover:w-16 active:scale-90"
+                       onClick={() => changePage(-1)}
                        disabled={pageNumber <= 1}
                      >
-                       <ChevronLeft className="w-8 h-8 text-zinc-400" />
+                       <ChevronLeft className="w-8 h-8 text-white" />
                      </Button>
                   </div>
-                  <div className="absolute inset-y-0 right-0 w-20 flex items-center justify-center group pointer-events-none">
+                  <div className="absolute inset-y-0 right-0 w-12 flex items-center justify-center group z-30 pointer-events-none">
                      <Button 
                        variant="ghost" 
-                       className="pointer-events-auto h-20 w-12 bg-black/5 opacity-0 group-hover:opacity-100 rounded-l-3xl rounded-r-none"
-                       onClick={() => setPageNumber(prev => numPages ? Math.min(prev + 1, numPages) : prev)}
+                       className="pointer-events-auto h-24 w-10 bg-black/10 backdrop-blur-sm opacity-0 group-hover:opacity-100 rounded-l-3xl rounded-r-none transition-all hover:w-16 active:scale-90"
+                       onClick={() => changePage(1)}
                        disabled={numPages ? pageNumber >= numPages : false}
                      >
-                       <ChevronRight className="w-8 h-8 text-zinc-400" />
+                       <ChevronRight className="w-8 h-8 text-white" />
                      </Button>
                   </div>
                 </div>

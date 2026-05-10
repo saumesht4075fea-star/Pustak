@@ -1518,7 +1518,28 @@ export default function Admin() {
              </div>
              
 
-             <Button type="submit" className="w-full bg-orange-600 text-white hover:bg-orange-700 font-black h-12 rounded-2xl">SYCHRONIZE CHANGES</Button>
+             <div className="space-y-4">
+                <div className="p-4 border-2 border-dashed border-zinc-200 rounded-2xl text-center">
+                   <Label className="text-[10px] font-black mb-2 block uppercase text-zinc-400">Update Assets (Optional)</Label>
+                   <div className="flex gap-2 justify-center">
+                      <Button type="button" variant="outline" className="h-10 rounded-xl relative overflow-hidden">
+                        Change Cover
+                        <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" accept="image/*" onChange={(e) => e.target.files && handleFileUpload(e.target.files[0], 'cover', true)} />
+                      </Button>
+                      <Button type="button" variant="outline" className="h-10 rounded-xl relative overflow-hidden">
+                        Change PDF
+                        <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" accept="application/pdf" onChange={(e) => e.target.files && handleFileUpload(e.target.files[0], 'ebook', true)} />
+                      </Button>
+                   </div>
+                   {(editFormData.cover_url !== editingEbook?.cover_url || editFormData.file_url !== editingEbook?.file_url) && 
+                    <p className="text-[10px] font-bold text-orange-600 mt-2">New Files Uploaded ✓</p>
+                   }
+                </div>
+             </div>
+
+             <Button type="submit" className="w-full bg-orange-600 text-white hover:bg-orange-700 font-black h-12 rounded-2xl" disabled={isUploading}>
+                {isUploading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : 'SYNCHRONIZE CHANGES'}
+             </Button>
           </form>
         </DialogContent>
       </Dialog>
