@@ -379,6 +379,37 @@ export default function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    const deepCleanSession = async () => {
+      console.warn('Performing deep session clean...');
+      // Comprehensive storage clearing
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && (
+          key.includes('supabase.auth.token') || 
+          key.startsWith('sb-') || 
+          key.includes('auth-token')
+        )) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach(key => localStorage.removeItem(key));
+      sessionStorage.clear();
+      await supabase.auth.signOut().catch(() => {});
+      setUser(null);
+      setProfile(null);
+    };
+
+    const handleGlobalError = (event: PromiseRejectionEvent) => {
+      if (event.reason?.message?.includes('Refresh Token Not Found') || event.reason?.message?.includes('invalid_refresh_token')) {
+        console.warn('Caught global refresh token error, cleaning up...');
+        toast.error('Session expired. Please sign in again.');
+        deepCleanSession();
+      }
+    };
+    
+    window.addEventListener('unhandledrejection', handleGlobalError);
+
     const initializeAuth = async () => {
       if (!isSupabaseConfigured) {
         setLoading(false);
@@ -387,18 +418,14 @@ export default function App() {
       try {
         const { data: { session }, error } = await supabase.auth.getSession();
         if (error) {
-          // If we have a refresh token error, forcefully clear local storage and sign out
-          if (error.message.includes('Refresh Token Not Found') || error.message.includes('invalid_refresh_token')) {
-            console.warn('Invalid session detected, clearing storage...');
-            // Attempt to clear common supabase storage keys just in case
-            Object.keys(localStorage).forEach(key => {
-              if (key.includes('supabase.auth.token') || key.startsWith('sb-')) {
-                localStorage.removeItem(key);
-              }
-            });
-            // Force a sign out to clear any internal SDK state
-            await supabase.auth.signOut().catch(() => {});
-            setUser(null);
+          // Comprehensive check for refresh token errors
+          const isRefreshTokenError = 
+            error.message.includes('Refresh Token Not Found') || 
+            error.message.includes('invalid_refresh_token') ||
+            error.message.includes('Identity not found');
+
+          if (isRefreshTokenError) {
+            deepCleanSession();
           }
           console.error('Session error:', error);
         }
@@ -422,22 +449,25 @@ export default function App() {
     if (!isSupabaseConfigured) return;
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      const currentUser = session?.user ?? null;
-      
-      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
-        setUser(currentUser);
-        if (currentUser) {
-          checkRole(currentUser);
-          syncUser(currentUser);
-          checkOrders(currentUser);
-          fetchProfile(currentUser);
-        }
-      } else if (event === 'SIGNED_OUT') {
+      // Handle potential errors during auth state change events
+      if (event === 'INITIAL_SESSION' && !session) {
+        // This can happen if getSession fails silently
+      }
+
+      if (event === 'SIGNED_OUT') {
+        // Clear everything on sign out
         setUser(null);
         setProfile(null);
         setIsAdmin(false);
         setIsSeller(false);
         setHasOrders(false);
+      } else if (session?.user) {
+        const currentUser = session.user;
+        setUser(currentUser);
+        checkRole(currentUser);
+        syncUser(currentUser);
+        checkOrders(currentUser);
+        fetchProfile(currentUser);
       }
       
       setLoading(false);
@@ -445,6 +475,7 @@ export default function App() {
 
     return () => {
       subscription.unsubscribe();
+      window.removeEventListener('unhandledrejection', handleGlobalError);
     };
   }, []);
 
