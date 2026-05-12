@@ -18,7 +18,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { toast } from 'sonner';
 import { Ebook, Order, Profile } from '../types';
 
-type AdminTab = 'overview' | 'revenue' | 'orders' | 'utr' | 'reports' | 'payouts' | 'products' | 'sellers' | 'banners';
+type AdminTab = 'overview' | 'revenue' | 'orders' | 'utr' | 'reports' | 'payouts' | 'products' | 'sellers' | 'banners' | 'community' | 'reviews' | 'settings';
 
 export default function Admin() {
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
@@ -27,6 +27,9 @@ export default function Admin() {
   const [sellers, setSellers] = useState<Profile[]>([]);
   const [withdrawals, setWithdrawals] = useState<any[]>([]);
   const [banners, setBanners] = useState<any[]>([]);
+  const [allReviews, setAllReviews] = useState<any[]>([]);
+  const [communityMessages, setCommunityMessages] = useState<any[]>([]);
+  const [platformUpi, setPlatformUpi] = useState('7417645286@slc');
   const [isUploadingBanner, setIsUploadingBanner] = useState(false);
   const [sellerSearch, setSellerSearch] = useState('');
   const [viewingUser, setViewingUser] = useState<Profile | null>(null);
@@ -190,6 +193,18 @@ export default function Admin() {
       .select('*')
       .order('created_at', { ascending: false });
     if (bannerData) setBanners(bannerData);
+
+    const { data: reviewData } = await supabase
+      .from('reviews')
+      .select('*, profiles(display_name, email), ebooks(title)')
+      .order('created_at', { ascending: false });
+    if (reviewData) setAllReviews(reviewData);
+
+    const { data: chatData } = await supabase
+      .from('community_messages')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (chatData) setCommunityMessages(chatData);
   };
 
   useEffect(() => {
@@ -201,6 +216,8 @@ export default function Admin() {
     const withdrawalsSub = supabase.channel('admin_withdrawals').on('postgres_changes', { event: '*', schema: 'public', table: 'withdrawals' }, fetchData).subscribe();
     const profilesSub = supabase.channel('admin_profiles').on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, fetchData).subscribe();
     const bannersSub = supabase.channel('admin_banners').on('postgres_changes', { event: '*', schema: 'public', table: 'home_banners' }, fetchData).subscribe();
+    const reviewsSub = supabase.channel('admin_reviews').on('postgres_changes', { event: '*', schema: 'public', table: 'reviews' }, fetchData).subscribe();
+    const chatSub = supabase.channel('admin_chat').on('postgres_changes', { event: '*', schema: 'public', table: 'community_messages' }, fetchData).subscribe();
 
     return () => { 
       supabase.removeChannel(ebooksSub);
@@ -208,6 +225,8 @@ export default function Admin() {
       supabase.removeChannel(withdrawalsSub);
       supabase.removeChannel(profilesSub);
       supabase.removeChannel(bannersSub);
+      supabase.removeChannel(reviewsSub);
+      supabase.removeChannel(chatSub);
     };
   }, []);
 
@@ -411,6 +430,28 @@ export default function Admin() {
     }
   };
 
+  const handleDeleteReview = async (id: string) => {
+    try {
+      const { error } = await supabase.from('reviews').delete().eq('id', id);
+      if (error) throw error;
+      toast.success('Review deleted');
+      fetchData();
+    } catch (err: any) {
+      toast.error(err.message);
+    }
+  };
+
+  const handleDeleteChatMessage = async (id: string) => {
+    try {
+      const { error } = await supabase.from('community_messages').delete().eq('id', id);
+      if (error) throw error;
+      toast.success('Message removed from community');
+      fetchData();
+    } catch (err: any) {
+      toast.error(err.message);
+    }
+  };
+
   const onDragOver = (e: React.DragEvent) => { e.preventDefault(); e.stopPropagation(); };
   const onDrop = (e: React.DragEvent, type: 'cover' | 'ebook', isEdit: boolean = false) => {
     e.preventDefault(); e.stopPropagation();
@@ -432,8 +473,8 @@ export default function Admin() {
           : 'text-zinc-500 hover:bg-zinc-100'
       }`}
     >
-      <Icon className="w-4 h-4" />
-      <span className="hidden sm:inline">{label}</span>
+      <Icon className="w-4 h-4 shrink-0" />
+      <span>{label}</span>
     </button>
   );
 
@@ -444,16 +485,19 @@ export default function Admin() {
           <h1 className="text-4xl font-black tracking-tight text-zinc-900">Admin Command</h1>
           <p className="text-zinc-500 font-bold uppercase text-[10px] tracking-widest mt-1">Control Center • Verified Operations</p>
         </div>
-        <div className="flex overflow-x-auto pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 scrollbar-hide gap-2 bg-zinc-50 p-1.5 rounded-2xl border border-zinc-100">
+        <div className="flex overflow-x-auto pb-4 -mx-4 px-4 sm:mx-0 sm:px-0 scrollbar-hide gap-3 bg-zinc-50 p-2 rounded-[1.5rem] border border-zinc-200/60 shadow-sm">
           <NavItem id="overview" label="Dashboard" icon={LayoutDashboard} />
-          <NavItem id="revenue" label="Revenue History" icon={IndianRupee} />
-          <NavItem id="orders" label="All Orders" icon={History} />
-          <NavItem id="utr" label="UTR Matcher" icon={CheckCircle2} />
-          <NavItem id="reports" label="Products & Sales" icon={ChartBar} />
+          <NavItem id="revenue" label="Revenue" icon={IndianRupee} />
+          <NavItem id="orders" label="Orders" icon={History} />
+          <NavItem id="utr" label="Verification" icon={CheckCircle2} />
           <NavItem id="payouts" label="Withdrawals" icon={CreditCard} />
           <NavItem id="products" label="Products" icon={Package} />
           <NavItem id="sellers" label="Sellers" icon={Users} />
           <NavItem id="banners" label="Hero Banners" icon={ImageIcon} />
+          <NavItem id="community" label="Community" icon={Share2} />
+          <NavItem id="reviews" label="Reviews" icon={BadgeCheck} />
+          <NavItem id="settings" label="Config" icon={Settings} />
+          <NavItem id="reports" label="Sales Report" icon={ChartBar} />
         </div>
       </div>
 
@@ -1332,6 +1376,180 @@ export default function Admin() {
                 );
               })}
           </div>
+        </div>
+      )}
+
+      {activeTab === 'community' && (
+        <div className="space-y-6 animate-in fade-in duration-500">
+           <Card className="border-none shadow-2xl rounded-[2.5rem] bg-white overflow-hidden">
+              <CardHeader className="bg-zinc-900 text-white p-6 sm:p-8">
+                <CardTitle className="text-xl sm:text-2xl font-black flex items-center gap-2">
+                  <Share2 className="w-6 h-6 text-green-500" />
+                  Community Chat Moderator
+                </CardTitle>
+                <CardDescription className="text-zinc-400 font-bold uppercase text-[10px] tracking-widest mt-1">Manage global community conversations</CardDescription>
+              </CardHeader>
+              <CardContent className="p-4 sm:p-8 space-y-4">
+                 <div className="overflow-hidden border border-zinc-100 rounded-2xl">
+                    <table className="w-full text-left">
+                       <thead className="bg-zinc-50 border-b border-zinc-100 text-[10px] font-black uppercase text-zinc-400 tracking-widest italic">
+                          <tr>
+                             <th className="px-6 py-4">User</th>
+                             <th className="px-6 py-4">Message</th>
+                             <th className="px-6 py-4 text-center">Timestamp</th>
+                             <th className="px-6 py-4 text-right">Actions</th>
+                          </tr>
+                       </thead>
+                       <tbody className="divide-y divide-zinc-100">
+                          {communityMessages.map(msg => (
+                            <tr key={msg.id} className="hover:bg-zinc-50/50 transition-colors">
+                               <td className="px-6 py-4">
+                                  <div className="flex items-center gap-3">
+                                     <img src={msg.avatar_url} className="w-8 h-8 rounded-lg" />
+                                     <div>
+                                        <p className="text-xs font-black text-zinc-900">{msg.display_name}</p>
+                                        <p className="text-[10px] text-zinc-400 truncate max-w-[120px]">{msg.user_id}</p>
+                                     </div>
+                                  </div>
+                               </td>
+                               <td className="px-6 py-4">
+                                  <p className="text-sm font-medium text-zinc-800 line-clamp-2 max-w-md">{msg.text}</p>
+                               </td>
+                               <td className="px-6 py-4 text-center text-[10px] text-zinc-400 font-bold">
+                                  {new Date(msg.created_at).toLocaleString()}
+                               </td>
+                               <td className="px-6 py-4 text-right">
+                                  <Button 
+                                    variant="ghost" 
+                                    size="icon" 
+                                    className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg"
+                                    onClick={() => handleDeleteChatMessage(msg.id)}
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </Button>
+                               </td>
+                            </tr>
+                          ))}
+                          {communityMessages.length === 0 && (
+                            <tr>
+                               <td colSpan={4} className="px-6 py-20 text-center text-zinc-300 italic uppercase font-black text-sm">Silence in the community...</td>
+                            </tr>
+                          )}
+                       </tbody>
+                    </table>
+                 </div>
+              </CardContent>
+           </Card>
+        </div>
+      )}
+
+      {activeTab === 'reviews' && (
+        <div className="space-y-6 animate-in fade-in duration-500">
+           <Card className="border-none shadow-2xl rounded-[2.5rem] bg-white overflow-hidden">
+              <CardHeader className="bg-zinc-900 text-white p-6 sm:p-8">
+                <CardTitle className="text-xl sm:text-2xl font-black flex items-center gap-2">
+                  <BadgeCheck className="w-6 h-6 text-orange-500" />
+                  Product Reviews Manager
+                </CardTitle>
+                <CardDescription className="text-zinc-400 font-bold uppercase text-[10px] tracking-widest mt-1">Review and moderate all customer feedback</CardDescription>
+              </CardHeader>
+              <CardContent className="p-4 sm:p-8 space-y-4">
+                 <div className="overflow-hidden border border-zinc-100 rounded-2xl">
+                    <table className="w-full text-left">
+                       <thead className="bg-zinc-50 border-b border-zinc-100 text-[10px] font-black uppercase text-zinc-400 tracking-widest italic">
+                          <tr>
+                             <th className="px-6 py-4">User</th>
+                             <th className="px-6 py-4">Product</th>
+                             <th className="px-6 py-4">Rating & Review</th>
+                             <th className="px-6 py-4 text-right">Actions</th>
+                          </tr>
+                       </thead>
+                       <tbody className="divide-y divide-zinc-100">
+                          {allReviews.map(rev => (
+                            <tr key={rev.id} className="hover:bg-zinc-50/50 transition-colors">
+                               <td className="px-6 py-4">
+                                  <p className="text-xs font-black text-zinc-900 uppercase italic">{rev.profiles?.display_name || rev.user_name}</p>
+                                  <p className="text-[10px] text-zinc-400">{rev.profiles?.email}</p>
+                               </td>
+                               <td className="px-6 py-4">
+                                  <p className="text-xs font-bold text-zinc-900 line-clamp-1">{rev.ebooks?.title}</p>
+                               </td>
+                               <td className="px-6 py-4">
+                                  <div className="flex items-center gap-1 mb-1">
+                                     {[...Array(5)].map((_, i) => (
+                                       <div key={i} className={`w-2 h-2 rounded-full ${i < rev.rating ? 'bg-orange-500' : 'bg-zinc-200'}`} />
+                                     ))}
+                                  </div>
+                                  <p className="text-sm font-medium text-zinc-800 line-clamp-2 max-w-md">{rev.comment}</p>
+                               </td>
+                               <td className="px-6 py-4 text-right">
+                                  <Button 
+                                    variant="ghost" 
+                                    size="icon" 
+                                    className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg"
+                                    onClick={() => handleDeleteReview(rev.id)}
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </Button>
+                               </td>
+                            </tr>
+                          ))}
+                          {allReviews.length === 0 && (
+                            <tr>
+                               <td colSpan={4} className="px-6 py-20 text-center text-zinc-300 italic uppercase font-black text-sm">No reviews to moderate yet.</td>
+                            </tr>
+                          )}
+                       </tbody>
+                    </table>
+                 </div>
+              </CardContent>
+           </Card>
+        </div>
+      )}
+
+      {activeTab === 'settings' && (
+        <div className="space-y-6 animate-in fade-in duration-500">
+           <Card className="border-none shadow-2xl rounded-[2.5rem] bg-white overflow-hidden">
+              <CardHeader className="bg-zinc-900 text-white p-6 sm:p-8">
+                <CardTitle className="text-xl sm:text-2xl font-black flex items-center gap-2">
+                  <Settings className="w-6 h-6 text-blue-500" />
+                  Platform Configuration
+                </CardTitle>
+                <CardDescription className="text-zinc-400 font-bold uppercase text-[10px] tracking-widest mt-1">Configure global application variables</CardDescription>
+              </CardHeader>
+              <CardContent className="p-8 space-y-8">
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div className="space-y-4">
+                       <h3 className="text-sm font-black italic uppercase tracking-wider text-zinc-400">Payment Gateway Intel</h3>
+                       <div className="space-y-2">
+                          <Label className="text-[10px] font-black uppercase text-zinc-400 ml-1">Universal UPI ID (Merchant)</Label>
+                          <div className="flex gap-2">
+                            <Input 
+                              value={platformUpi} 
+                              onChange={e => setPlatformUpi(e.target.value)} 
+                              className="h-12 flex-1 rounded-xl border-2 font-bold focus:border-blue-500"
+                              placeholder="7417645286@slc"
+                            />
+                            <Button className="h-12 rounded-xl bg-blue-600 hover:bg-blue-700 font-black" onClick={() => toast.success('UPI CONFIG SAVED TEMPORARILY')}>SAVE</Button>
+                          </div>
+                          <p className="text-[10px] text-zinc-400 font-bold italic mt-2">
+                             * Note: This currently updates the local state. For permanent changes, please update the hardcoded ID in ProductDetail.tsx or contact support.
+                          </p>
+                       </div>
+                    </div>
+
+                    <div className="space-y-4">
+                       <h3 className="text-sm font-black italic uppercase tracking-wider text-zinc-400">Affiliate Ecosystem</h3>
+                       <div className="p-4 bg-zinc-50 border border-zinc-100 rounded-2xl">
+                          <p className="text-xs font-bold text-zinc-500 leading-relaxed italic">
+                             Affiliate tracking is active via Referrer ID. AI Help is integrated via Gemini API.
+                             No alterations requested. Systems standing by.
+                          </p>
+                       </div>
+                    </div>
+                 </div>
+              </CardContent>
+           </Card>
         </div>
       )}
 

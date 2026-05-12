@@ -220,33 +220,33 @@ const PustakViewer: React.FC<PustakViewerProps> = ({ file, title, author, coverU
         draw = true;
         const localT = (sx - foldPos) / (PW - foldPos + 0.001);
         
-        // 3D Bending logic
-        const bend = Math.pow(Math.sin(Math.PI * localT * 0.5), 1.6);
-        const shift = t * 0.96 * bend;
+        // 3D Bending logic - exponentially more bending for "Google Play" feel
+        const bend = Math.pow(Math.sin(Math.PI * localT * 0.5), 2.2);
+        const shift = t * 0.98 * bend;
         destX = PX + foldPos + (sx - foldPos) * (1 - shift);
         
-        // Perspective & Lift
-        const lift = Math.sin(Math.PI * localT) * (PW * 0.12) * Math.sin(Math.PI * t);
+        // Perspective & Lift - increased for "bending from middle" feel
+        const lift = Math.sin(Math.PI * localT) * (PW * 0.18) * Math.sin(Math.PI * t);
         destY = PY - lift;
-        destH = PH + (lift * 0.5); // Slight enlargement to simulate perspective proximity
+        destH = PH + (lift * 0.6); // Perspective expansion
         
-        brightness = 0.6 + 0.4 * Math.sin(Math.PI * localT);
+        brightness = 0.5 + 0.5 * Math.sin(Math.PI * localT);
         alpha = localT < 0.02 ? localT / 0.02 : 1;
       } else {
         if (sx > foldPos) continue;
         draw = true;
         const localT = (foldPos - sx) / (foldPos + 0.001);
         
-        const bend = Math.pow(Math.sin(Math.PI * localT * 0.5), 1.6);
-        const shift = (1 - t) * 0.96 * bend;
+        const bend = Math.pow(Math.sin(Math.PI * localT * 0.5), 2.2);
+        const shift = (1 - t) * 0.98 * bend;
         destX = PX + foldPos - (foldPos - sx) * (1 - shift);
         
-        // Perspective & Lift
-        const lift = Math.sin(Math.PI * localT) * (PW * 0.12) * Math.sin(Math.PI * (1 - t));
+        // Perspective & Lift - increased for "bending from middle" feel
+        const lift = Math.sin(Math.PI * localT) * (PW * 0.18) * Math.sin(Math.PI * (1 - t));
         destY = PY - lift;
-        destH = PH + (lift * 0.5);
+        destH = PH + (lift * 0.6);
         
-        brightness = 0.6 + 0.4 * Math.sin(Math.PI * localT);
+        brightness = 0.5 + 0.5 * Math.sin(Math.PI * localT);
         alpha = localT < 0.02 ? localT / 0.02 : 1;
       }
 
@@ -296,14 +296,14 @@ const PustakViewer: React.FC<PustakViewerProps> = ({ file, title, author, coverU
 
   const startCurl = useCallback((dir: 'next' | 'prev', fromOC: OffscreenCanvas, toOC: OffscreenCanvas) => {
     if (stateRef.current.raf) cancelAnimationFrame(stateRef.current.raf);
-    const DUR = 940; // Slower, more deliberate flip
+    const DUR = 1200; // Slower, more deliberate flip like a real book
     let t0: number | null = null;
 
     const frame = (ts: number) => {
       if (!t0) t0 = ts;
       let p = Math.min((ts - t0) / DUR, 1);
-      // ease-in-out quart
-      p = p < 0.5 ? 8 * p * p * p * p : 1 - Math.pow(-2 * p + 2, 4) / 2;
+      // ease-in-out quint for even smoother organic motion
+      p = p < 0.5 ? 16 * Math.pow(p, 5) : 1 - Math.pow(-2 * p + 2, 5) / 2;
 
       drawCurl(dir, fromOC, toOC, p);
 
