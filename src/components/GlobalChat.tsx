@@ -93,20 +93,21 @@ export default function GlobalChat({ user, isAdmin }: GlobalChatProps) {
   if (!user) return null;
 
   return (
-    <div className="fixed bottom-6 right-6 z-[100] flex flex-col items-end">
-      <AnimatePresence>
-        {isOpen && (
-          <motion.div
-            initial={{ opacity: 0, y: 20, scale: 0.95 }}
-            animate={{ 
-              opacity: 1, 
-              y: 0, 
-              scale: 1,
-              height: isMinimized ? '60px' : '450px' 
-            }}
-            exit={{ opacity: 0, y: 20, scale: 0.95 }}
-            className="w-[350px] bg-white border border-zinc-200 rounded-3xl shadow-2xl overflow-hidden mb-4 flex flex-col"
-          >
+    <div className="fixed bottom-6 left-5 sm:left-auto sm:right-6 z-[100] flex flex-col items-start sm:items-end pointer-events-none">
+      <div className="pointer-events-auto flex flex-col items-start sm:items-end">
+        <AnimatePresence>
+          {isOpen && (
+            <motion.div
+              initial={{ opacity: 0, y: 20, scale: 0.95, transformOrigin: 'bottom left' }}
+              animate={{ 
+                opacity: 1, 
+                y: 0, 
+                scale: 1,
+                height: isMinimized ? '60px' : '450px' 
+              }}
+              exit={{ opacity: 0, y: 20, scale: 0.95 }}
+              className="w-[350px] max-w-[calc(100vw-40px)] bg-white border border-zinc-200 rounded-3xl shadow-2xl overflow-hidden mb-4 flex flex-col"
+            >
             {/* Header */}
             <div className="p-4 bg-zinc-900 text-white flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -216,6 +217,7 @@ export default function GlobalChat({ user, isAdmin }: GlobalChatProps) {
       >
         <Bell className="w-6 h-6" />
       </Button>
+      </div>
     </div>
   );
 }
