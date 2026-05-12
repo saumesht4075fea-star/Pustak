@@ -4,6 +4,9 @@ import { ChevronLeft, ChevronRight, Loader2, ZoomIn, ZoomOut, BookOpen, Maximize
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 
+// Set worker source for react-pdf
+pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+
 interface PustakViewerProps {
   file: string;
   title?: string;
@@ -81,13 +84,25 @@ const PustakViewer: React.FC<PustakViewerProps> = ({ file, title, author, coverU
 
   const addBindingShadow = useCallback((ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number) => {
     const dpr = window.devicePixelRatio || 1;
-    const sw = Math.min(w * 0.04, 18) * dpr;
+    const sw = Math.min(w * 0.08, 48) * dpr;
     const gx = x * dpr, gy = y * dpr, gh = h * dpr;
+    
+    // Deeper spine shadow
     const g = ctx.createLinearGradient(gx, 0, gx + sw, 0);
-    g.addColorStop(0, 'rgba(0,0,0,0.38)');
+    g.addColorStop(0, 'rgba(0,0,0,0.65)');
+    g.addColorStop(0.3, 'rgba(0,0,0,0.25)');
+    g.addColorStop(0.7, 'rgba(0,0,0,0.05)');
     g.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.fillStyle = g;
     ctx.fillRect(gx, gy, sw, gh);
+
+    // Subtle edge page-stack effect (right side)
+    const ex = (x + w) * dpr;
+    const eg = ctx.createLinearGradient(ex - 8 * dpr, 0, ex, 0);
+    eg.addColorStop(0, 'rgba(0,0,0,0)');
+    eg.addColorStop(1, 'rgba(0,0,0,0.15)');
+    ctx.fillStyle = eg;
+    ctx.fillRect(ex - 8 * dpr, gy, 8 * dpr, gh);
   }, []);
 
   const drawStatic = useCallback((n: number) => {
@@ -188,8 +203,6 @@ const PustakViewer: React.FC<PustakViewerProps> = ({ file, title, author, coverU
     ctx.rect(PX, PY, PW, PH);
     ctx.clip();
 
-    const fromOCContext = fromOC.getContext('2d');
-
     for (let c = 0; c < COLS; c++) {
       const sx = c * colW;
       let draw = false;
@@ -199,18 +212,21 @@ const PustakViewer: React.FC<PustakViewerProps> = ({ file, title, author, coverU
         if (sx < foldPos) continue;
         draw = true;
         const localT = (sx - foldPos) / (PW - foldPos + 0.001);
-        const curl = Math.sin(Math.PI * localT * 0.5);
-        destX = PX + foldPos + (sx - foldPos) * (1 - t * 0.92 * curl);
-        brightness = 0.72 + 0.28 * Math.sin(Math.PI * localT);
-        alpha = localT < 0.05 ? localT / 0.05 : 1;
+        // Bending from middle logic
+        const bend = Math.pow(Math.sin(Math.PI * localT * 0.5), 1.6);
+        const shift = t * 0.94 * bend;
+        destX = PX + foldPos + (sx - foldPos) * (1 - shift);
+        brightness = 0.65 + 0.35 * Math.sin(Math.PI * localT);
+        alpha = localT < 0.03 ? localT / 0.03 : 1;
       } else {
         if (sx > foldPos) continue;
         draw = true;
         const localT = (foldPos - sx) / (foldPos + 0.001);
-        const curl = Math.sin(Math.PI * localT * 0.5);
-        destX = PX + foldPos - (foldPos - sx) * (1 - (1 - t) * 0.92 * curl);
-        brightness = 0.72 + 0.28 * Math.sin(Math.PI * localT);
-        alpha = localT < 0.05 ? localT / 0.05 : 1;
+        const bend = Math.pow(Math.sin(Math.PI * localT * 0.5), 1.6);
+        const shift = (1 - t) * 0.94 * bend;
+        destX = PX + foldPos - (foldPos - sx) * (1 - shift);
+        brightness = 0.65 + 0.35 * Math.sin(Math.PI * localT);
+        alpha = localT < 0.03 ? localT / 0.03 : 1;
       }
 
       if (draw) {
@@ -221,11 +237,11 @@ const PustakViewer: React.FC<PustakViewerProps> = ({ file, title, author, coverU
           Math.round(destX), PY, Math.ceil(colW), PH
         );
         if (brightness < 1) {
-          ctx.globalAlpha = alpha * (1 - brightness) * 0.75;
+          ctx.globalAlpha = alpha * (1 - brightness) * 0.8;
           ctx.fillStyle = 'rgba(0,0,0,1)';
           ctx.fillRect(Math.round(destX), PY, Math.ceil(colW), PH);
         } else if (brightness > 1) {
-          ctx.globalAlpha = alpha * (brightness - 1) * 0.5;
+          ctx.globalAlpha = alpha * (brightness - 1) * 0.4;
           ctx.fillStyle = 'rgba(255,255,255,1)';
           ctx.fillRect(Math.round(destX), PY, Math.ceil(colW), PH);
         }
@@ -234,15 +250,24 @@ const PustakViewer: React.FC<PustakViewerProps> = ({ file, title, author, coverU
     ctx.globalAlpha = 1;
     ctx.restore();
 
-    // 4. Crease highlight
+    // 4. Crease highlight - more dramatic for realistic depth
     const creaseX = PX + foldPos;
-    const creaseW = Math.min(PW * 0.008, 5) * dpr;
+    const creaseW = Math.min(PW * 0.015, 8) * dpr;
     const cg = ctx.createLinearGradient(creaseX - creaseW, PY, creaseX + creaseW, PY);
     cg.addColorStop(0, 'rgba(255,255,255,0)');
-    cg.addColorStop(0.5, `rgba(255,255,255,${0.55 * Math.sin(Math.PI * t)})`);
+    cg.addColorStop(0.5, `rgba(255,255,255,${0.65 * Math.sin(Math.PI * t)})`);
     cg.addColorStop(1, 'rgba(255,255,255,0)');
     ctx.fillStyle = cg;
     ctx.fillRect(creaseX - creaseW, PY, creaseW * 2, PH);
+
+    // 5. Shadow cast by the fold onto the previous page/toPage
+    const shadowW = Math.min(PW * 0.2, 100) * dpr;
+    const sgX = dir === 'next' ? creaseX - shadowW : creaseX;
+    const sgG = ctx.createLinearGradient(creaseX, 0, dir === 'next' ? creaseX - shadowW : creaseX + shadowW, 0);
+    sgG.addColorStop(0, `rgba(0,0,0,${0.4 * Math.sin(Math.PI * t)})`);
+    sgG.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = sgG;
+    ctx.fillRect(dir === 'next' ? creaseX - shadowW : creaseX, PY, shadowW, PH);
 
     addBindingShadow(ctx, x, y, w, h);
     ctx.restore();
@@ -250,7 +275,7 @@ const PustakViewer: React.FC<PustakViewerProps> = ({ file, title, author, coverU
 
   const startCurl = useCallback((dir: 'next' | 'prev', fromOC: OffscreenCanvas, toOC: OffscreenCanvas) => {
     if (stateRef.current.raf) cancelAnimationFrame(stateRef.current.raf);
-    const DUR = 560;
+    const DUR = 940; // Slower, more deliberate flip
     let t0: number | null = null;
 
     const frame = (ts: number) => {
