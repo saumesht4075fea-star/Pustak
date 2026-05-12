@@ -170,24 +170,31 @@ const PustakViewer: React.FC<PustakViewerProps> = ({ file, title, author, coverU
     ctx.fillStyle = '#0a0a0f';
     ctx.fillRect(0, 0, W * dpr, H * dpr);
     
-    // 1. Draw toPage background
+    // 1. Draw toPage background with ambient shadow that clears as page flips
+    ctx.save();
     drawPage(ctx, toOC, x, y, w, h);
+    if (t < 1) {
+      ctx.globalAlpha = (1 - t) * 0.45;
+      ctx.fillStyle = '#000';
+      ctx.fillRect(PX, PY, PW, PH);
+    }
+    ctx.restore();
 
     // 2. Shadow cast by lifting page
     if (dir === 'next') {
-      const shW = Math.min(foldPos * 0.35, PW * 0.18);
+      const shW = Math.min(foldPos * 0.45, PW * 0.25);
       if (shW > 1) {
         const sg = ctx.createLinearGradient(PX + foldPos, PY, PX + foldPos - shW, PY);
-        sg.addColorStop(0, `rgba(0,0,0,${0.42 * (1 - t)})`);
+        sg.addColorStop(0, `rgba(0,0,0,${0.55 * (1 - t)})`);
         sg.addColorStop(1, 'rgba(0,0,0,0)');
         ctx.fillStyle = sg;
         ctx.fillRect(PX + foldPos - shW, PY, shW, PH);
       }
     } else {
-      const shW = Math.min((PW - foldPos) * 0.35, PW * 0.18);
+      const shW = Math.min((PW - foldPos) * 0.45, PW * 0.25);
       if (shW > 1) {
         const sg = ctx.createLinearGradient(PX + foldPos, PY, PX + foldPos + shW, PY);
-        sg.addColorStop(0, `rgba(0,0,0,${0.42 * t})`);
+        sg.addColorStop(0, `rgba(0,0,0,${0.55 * t})`);
         sg.addColorStop(1, 'rgba(0,0,0,0)');
         ctx.fillStyle = sg;
         ctx.fillRect(PX + foldPos, PY, shW, PH);
@@ -206,27 +213,41 @@ const PustakViewer: React.FC<PustakViewerProps> = ({ file, title, author, coverU
     for (let c = 0; c < COLS; c++) {
       const sx = c * colW;
       let draw = false;
-      let destX = 0, brightness = 1, alpha = 1;
+      let destX = 0, destY = PY, destH = PH, brightness = 1, alpha = 1;
 
       if (dir === 'next') {
         if (sx < foldPos) continue;
         draw = true;
         const localT = (sx - foldPos) / (PW - foldPos + 0.001);
-        // Bending from middle logic
+        
+        // 3D Bending logic
         const bend = Math.pow(Math.sin(Math.PI * localT * 0.5), 1.6);
-        const shift = t * 0.94 * bend;
+        const shift = t * 0.96 * bend;
         destX = PX + foldPos + (sx - foldPos) * (1 - shift);
-        brightness = 0.65 + 0.35 * Math.sin(Math.PI * localT);
-        alpha = localT < 0.03 ? localT / 0.03 : 1;
+        
+        // Perspective & Lift
+        const lift = Math.sin(Math.PI * localT) * (PW * 0.12) * Math.sin(Math.PI * t);
+        destY = PY - lift;
+        destH = PH + (lift * 0.5); // Slight enlargement to simulate perspective proximity
+        
+        brightness = 0.6 + 0.4 * Math.sin(Math.PI * localT);
+        alpha = localT < 0.02 ? localT / 0.02 : 1;
       } else {
         if (sx > foldPos) continue;
         draw = true;
         const localT = (foldPos - sx) / (foldPos + 0.001);
+        
         const bend = Math.pow(Math.sin(Math.PI * localT * 0.5), 1.6);
-        const shift = (1 - t) * 0.94 * bend;
+        const shift = (1 - t) * 0.96 * bend;
         destX = PX + foldPos - (foldPos - sx) * (1 - shift);
-        brightness = 0.65 + 0.35 * Math.sin(Math.PI * localT);
-        alpha = localT < 0.03 ? localT / 0.03 : 1;
+        
+        // Perspective & Lift
+        const lift = Math.sin(Math.PI * localT) * (PW * 0.12) * Math.sin(Math.PI * (1 - t));
+        destY = PY - lift;
+        destH = PH + (lift * 0.5);
+        
+        brightness = 0.6 + 0.4 * Math.sin(Math.PI * localT);
+        alpha = localT < 0.02 ? localT / 0.02 : 1;
       }
 
       if (draw) {
@@ -234,16 +255,16 @@ const PustakViewer: React.FC<PustakViewerProps> = ({ file, title, author, coverU
         ctx.drawImage(
           fromOC,
           Math.round(sx), 0, Math.ceil(colW), fromOC.height,
-          Math.round(destX), PY, Math.ceil(colW), PH
+          Math.round(destX), destY, Math.ceil(colW), destH
         );
         if (brightness < 1) {
-          ctx.globalAlpha = alpha * (1 - brightness) * 0.8;
+          ctx.globalAlpha = alpha * (1 - brightness) * 0.85;
           ctx.fillStyle = 'rgba(0,0,0,1)';
-          ctx.fillRect(Math.round(destX), PY, Math.ceil(colW), PH);
+          ctx.fillRect(Math.round(destX), destY, Math.ceil(colW), destH);
         } else if (brightness > 1) {
-          ctx.globalAlpha = alpha * (brightness - 1) * 0.4;
+          ctx.globalAlpha = alpha * (brightness - 1) * 0.45;
           ctx.fillStyle = 'rgba(255,255,255,1)';
-          ctx.fillRect(Math.round(destX), PY, Math.ceil(colW), PH);
+          ctx.fillRect(Math.round(destX), destY, Math.ceil(colW), destH);
         }
       }
     }

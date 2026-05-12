@@ -13,6 +13,28 @@ import { Ebook, Review, Profile } from '../types';
 import { Link, useNavigate } from 'react-router-dom';
 import { AnimatePresence } from 'motion/react';
 
+const Typewriter = ({ text, delay = 50 }: { text: string, delay?: number }) => {
+  const [currentText, setCurrentText] = useState('');
+  const [index, setIndex] = useState(0);
+
+  useEffect(() => {
+    setCurrentText('');
+    setIndex(0);
+  }, [text]);
+
+  useEffect(() => {
+    if (index < text.length) {
+      const timeout = setTimeout(() => {
+        setCurrentText(prev => prev + text[index]);
+        setIndex(prev => prev + 1);
+      }, delay);
+      return () => clearTimeout(timeout);
+    }
+  }, [index, text, delay]);
+
+  return <span>{currentText}</span>;
+};
+
 export default function Home({ user }: { user: User | null }) {
   const [ebooks, setEbooks] = useState<Ebook[]>([]);
   const [banners, setBanners] = useState<any[]>([]);
@@ -269,9 +291,9 @@ export default function Home({ user }: { user: User | null }) {
                   <Badge className="bg-orange-600 hover:bg-orange-600 text-white border-none px-4 py-1 mb-4 hidden sm:inline-flex">PREMIUM COLLECTION</Badge>
                   <h1 className="text-4xl sm:text-7xl font-black text-white tracking-tighter leading-[0.9]">
                     {banners.length > 0 && banners[currentBannerIndex].title ? (
-                      banners[currentBannerIndex].title
+                      <Typewriter text={banners[currentBannerIndex].title} />
                     ) : (
-                      <>READ. LEARN. <br /><span className="text-orange-500 italic">DOMINATE.</span></>
+                      <>READ. LEARN. <br /><span className="text-orange-500 italic"><Typewriter text="DOMINATE." delay={100} /></span></>
                     )}
                   </h1>
                 </motion.div>
