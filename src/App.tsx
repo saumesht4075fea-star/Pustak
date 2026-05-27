@@ -382,15 +382,13 @@ export default function App() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [isSeller, setIsSeller] = useState(false);
   const [hasOrders, setHasOrders] = useState(false);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
+  const [loading, setLoading] = useState(true);  useEffect(() => {
     // Render and update the physical png/ico favicons if not already completed
-    if (localStorage.getItem("pustak_favicons_v4") === "done") return;
+    if (localStorage.getItem("pustak_favicons_v7") === "done") return;
     
     const generateFavicons = async () => {
       try {
-        const res = await fetch("/favicon.svg");
+        const res = await fetch("/favicon.svg?v=7");
         if (!res.ok) return;
         const svgText = await res.text();
         
@@ -448,7 +446,7 @@ export default function App() {
         });
         
         if (saveRes.ok) {
-          localStorage.setItem("pustak_favicons_v4", "done");
+          localStorage.setItem("pustak_favicons_v7", "done");
           console.log("PUSTAK Favicons successfully generated and written on backend!");
         }
       } catch (err) {
