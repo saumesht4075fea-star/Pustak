@@ -1,0 +1,95 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <!-- Dark background gradient for the squircle container -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1c1917" />
+      <stop offset="50%" stop-color="#0c0a09" />
+      <stop offset="100%" stop-color="#020000" />
+    </linearGradient>
+
+    <!-- Glowing orange brand gradient for outer rim -->
+    <linearGradient id="borderGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#ea580c" stop-opacity="0.8" />
+      <stop offset="50%" stop-color="#f97316" stop-opacity="1" />
+      <stop offset="100%" stop-color="#fdba74" stop-opacity="0.8" />
+    </linearGradient>
+
+    <!-- Bright, fiery gradient for primary book/page wings -->
+    <linearGradient id="primaryFieryGrad" x1="10%" y1="10%" x2="90%" y2="90%">
+      <stop offset="0%" stop-color="#ff3300" />
+      <stop offset="60%" stop-color="#f97316" />
+      <stop offset="100%" stop-color="#fbbf24" />
+    </linearGradient>
+
+    <!-- Soft accent gradient for backend pages -->
+    <linearGradient id="accentFieryGrad" x1="10%" y1="10%" x2="90%" y2="90%">
+      <stop offset="0%" stop-color="#ea580c" />
+      <stop offset="100%" stop-color="#f97316" stop-opacity="0.65" />
+    </linearGradient>
+
+    <!-- Radial glow in background to pop the central monogram -->
+    <radialGradient id="centerGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#f97316" stop-opacity="0.25" />
+      <stop offset="100%" stop-color="#f97316" stop-opacity="0" />
+    </radialGradient>
+
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="15" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Squircle Container Background with Outer Glow -->
+  <rect x="24" y="24" width="464" height="464" rx="124" fill="url(#bgGrad)" stroke="url(#borderGrad)" stroke-width="4" />
+  
+  <!-- Ambient Center Glow behind the logo -->
+  <circle cx="256" cy="256" r="180" fill="url(#centerGlow)" filter="url(#glow)" />
+
+  <!-- The "P" Monogram + Open Book Emblem Group -->
+  <g transform="translate(10, 0)">
+    <!-- Back Page / Overlapping Spine Shadow Wing (Accented gradient) -->
+    <path 
+      d="M 180 130 
+         C 180 130, 220 150, 260 150 
+         C 320 150, 370 190, 370 250 
+         C 370 310, 320 350, 260 350 
+         C 220 350, 180 370, 180 370 
+         Z" 
+      fill="url(#accentFieryGrad)" 
+      opacity="0.4"
+    />
+
+    <!-- Outer Page Swing that closes into a P Loop (Primary electric fiery gradient) -->
+    <path 
+      d="M 180 130
+         C 230 130, 390 150, 390 256
+         C 390 362, 230 382, 180 382
+         L 180 338
+         C 220 338, 342 320, 342 256
+         C 342 192, 220 174, 180 174
+         Z" 
+      fill="url(#primaryFieryGrad)" 
+    />
+
+    <!-- Main Vertical Pillar (The Book Spine / Left stem of the "P") with segmented notch -->
+    <!-- Represents strong structure, foundation of content -->
+    <rect x="140" y="130" width="32" height="252" rx="16" fill="url(#primaryFieryGrad)" />
+    
+    <!-- Inner glowing page edge indicating a book profile -->
+    <path 
+      d="M 180 174 
+         C 210 174, 280 190, 280 256 
+         C 280 322, 210 338, 180 338 
+         L 180 294 
+         C 200 294, 236 282, 236 256 
+         C 236 230, 200 218, 180 218 
+         Z" 
+      fill="#ffffff" 
+      opacity="0.8"
+    />
+    
+    <!-- Futuristic Accent Dots -->
+    <circle cx="280" cy="115" r="8" fill="#fdba74" />
+    <circle cx="256" cy="397" r="8" fill="#f97316" />
+  </g>
+</svg>

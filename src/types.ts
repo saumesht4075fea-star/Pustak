@@ -39,6 +39,7 @@ export interface Order {
   status: string;
   created_at: string;
   ebook?: Ebook;
+  course?: Course;
   profiles?: Profile; // Keeping for backward compatibility if needed
   buyer?: Profile;
   referrer_profile?: Profile;
@@ -68,5 +69,43 @@ export interface ChatMessage {
   display_name: string;
   avatar_url: string;
   text: string;
+  created_at: string;
+}
+
+export interface Course {
+  id: string;
+  ebook_id?: string; // Associated ebook
+  title: string;
+  instructor: string;
+  description: string;
+  price: number;
+  commission_amount: number;
+  cover_url: string;
+  category: string;
+  seller_id: string;
+  created_at: string;
+  is_verified?: boolean;
+  is_deleted?: boolean;
+}
+
+export interface UserCourseProgress {
+  id: string;
+  user_id: string;
+  course_id: string;
+  video_id: string;
+  is_completed: boolean;
+  last_watched_at: string;
+}
+
+export interface CourseVideo {
+  id: string;
+  course_id: string;
+  title: string;
+  description?: string;
+  mux_playback_id: string;
+  mux_asset_id: string;
+  is_preview: boolean;
+  order_index: number;
+  duration?: string;
   created_at: string;
 }

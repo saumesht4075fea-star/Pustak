@@ -5,7 +5,7 @@ import {
   Plus, Pencil, Trash2, Package, Users, IndianRupee, BookOpen, Upload, X, 
   Loader2, Image as ImageIcon, ExternalLink, BadgeCheck, Share2, 
   Search, Filter, Download, ChartBar, CreditCard, LayoutDashboard,
-  CheckCircle2, AlertCircle, History, TrendingUp
+  CheckCircle2, AlertCircle, History, TrendingUp, Settings, Play
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -18,12 +18,44 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { toast } from 'sonner';
 import { Ebook, Order, Profile } from '../types';
 
-type AdminTab = 'overview' | 'revenue' | 'orders' | 'utr' | 'reports' | 'payouts' | 'products' | 'sellers' | 'banners' | 'community' | 'reviews' | 'settings';
+type AdminTab = 'overview' | 'revenue' | 'orders' | 'utr' | 'reports' | 'payouts' | 'products' | 'sellers' | 'banners' | 'community' | 'reviews' | 'courses';
 
 export default function Admin() {
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
   const [ebooks, setEbooks] = useState<Ebook[]>([]);
+  const [courses, setCourses] = useState<any[]>([]);
+  const [courseVideos, setCourseVideos] = useState<any[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
+
+  const handleDeleteCourse = async (course: any) => {
+    if (!confirm('Are you sure you want to delete this course and all its videos from Mux?')) return;
+    const toastId = toast.loading('Deleting course and assets...');
+    try {
+      // 1. Delete intro video from Mux if exists
+      if (course.intro_mux_asset_id) {
+        await fetch(`/api/mux/asset/${course.intro_mux_asset_id}`, { method: 'DELETE' });
+      }
+
+      // 2. Get and delete all course videos from Mux
+      const { data: videos } = await supabase.from('course_videos').select('mux_asset_id').eq('course_id', course.id);
+      if (videos) {
+        for (const video of videos) {
+          if (video.mux_asset_id) {
+            await fetch(`/api/mux/asset/${video.mux_asset_id}`, { method: 'DELETE' });
+          }
+        }
+      }
+
+      // 3. Delete from Supabase
+      const { error } = await supabase.from('courses').delete().eq('id', course.id);
+      if (error) throw error;
+      
+      toast.success('Course and all Mux assets deleted', { id: toastId });
+      fetchData();
+    } catch (err: any) {
+      toast.error(err.message, { id: toastId });
+    }
+  };
   const [sellers, setSellers] = useState<Profile[]>([]);
   const [withdrawals, setWithdrawals] = useState<any[]>([]);
   const [banners, setBanners] = useState<any[]>([]);
@@ -33,7 +65,200 @@ export default function Admin() {
   const [isUploadingBanner, setIsUploadingBanner] = useState(false);
   const [sellerSearch, setSellerSearch] = useState('');
   const [viewingUser, setViewingUser] = useState<Profile | null>(null);
-  const [isAdding, setIsAdding] = useState(false);
+  const [selectedCourseForVideos, setSelectedCourseForVideos] = useState<any | null>(null);
+  const [isVideoAdding, setIsVideoAdding] = useState(false);
+  const [newVideo, setNewVideo] = useState({
+    title: '',
+    description: '',
+    mux_playback_id: '',
+    mux_asset_id: '',
+    is_preview: false,
+    order_index: 0
+  });
+
+  const handleAddCourse = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      // Fallback for missing columns to prevent crash
+      const coursePayload: any = {
+        title: newCourse.title,
+        ebook_id: newCourse.ebook_id === 'none' ? null : newCourse.ebook_id,
+        category: newCourse.category,
+        description: newCourse.description,
+        price: Number(newCourse.price),
+        commission_amount: Number(newCourse.commission_amount),
+        cover_url: newCourse.cover_url,
+        instructor: 'Platform Admin',
+        seller_id: user?.id
+      };
+
+      // Only add Mux fields if they are present in the state
+      const nc = newCourse as any;
+      if (nc.intro_mux_asset_id) coursePayload.intro_mux_asset_id = nc.intro_mux_asset_id;
+      if (nc.intro_mux_playback_id) coursePayload.intro_mux_playback_id = nc.intro_mux_playback_id;
+
+      const { error } = await supabase.from('courses').insert([coursePayload]);
+      if (error) throw error;
+      toast.success('Course created successfully');
+      setIsAddingCourse(false);
+      setNewCourse({
+        title: '',
+        ebook_id: '',
+        category: 'Mastery',
+        description: '',
+        price: 0,
+        commission_amount: 0,
+        cover_url: '',
+        file_url: '',
+        intro_mux_asset_id: '',
+        intro_mux_playback_id: ''
+      } as any);
+      fetchData();
+    } catch (err: any) {
+      toast.error(err.message);
+    }
+  };
+
+  const [isUploadingVideo, setIsUploadingVideo] = useState(false);
+  const [videoUploadProgress, setVideoUploadProgress] = useState(0);
+
+  const handleAddVideo = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedCourseForVideos) return;
+    
+    // This is now handled by the file input's onChange or a separate button
+    // But we'll keep the function signature if needed
+  };
+
+  const handleMuxUpload = async (file: File, onSuccess: (assetId: string, playbackId: string) => void) => {
+    setIsUploadingVideo(true);
+    setVideoUploadProgress(0);
+    const toastId = toast.loading('Initializing Mux upload...');
+
+    try {
+      // 1. Get Direct Upload URL
+      const uploadResp = await fetch('/api/mux/upload', { method: 'POST' });
+      const uploadData = await uploadResp.json();
+      
+      if (uploadData.error) throw new Error(uploadData.error);
+      
+      const { url, id: uploadId } = uploadData;
+      
+      // 2. Upload to Mux
+      toast.loading('Uploading video to Mux...', { id: toastId });
+      
+      await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('PUT', url);
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) {
+            const percent = Math.round((e.loaded / e.total) * 100);
+            setVideoUploadProgress(percent);
+          }
+        };
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) resolve(xhr.response);
+          else reject(new Error('Mux upload failed'));
+        };
+        xhr.onerror = () => reject(new Error('Mux upload network error'));
+        xhr.send(file);
+      });
+
+      // 3. Poll for Asset ID
+      toast.loading('Processing video on Mux...', { id: toastId });
+      
+      let finalAssetId = '';
+      let pollAttempts = 0;
+      const pollMaxAttempts = 60; // 5 minutes
+
+      while (pollAttempts < pollMaxAttempts) {
+        await new Promise(r => setTimeout(r, 5000));
+        const statusResp = await fetch(`/api/mux/upload/${uploadId}`);
+        const statusData = await statusResp.json();
+        
+        if (statusData.asset_id) {
+          finalAssetId = statusData.asset_id;
+          break;
+        }
+        
+        if (statusData.status === 'error') {
+          throw new Error('Mux processing failed');
+        }
+        
+        pollAttempts++;
+      }
+
+      if (!finalAssetId) throw new Error('Polling timed out for Asset ID');
+
+      // 4. Poll for Playback ID
+      pollAttempts = 0;
+      let finalPlaybackId = '';
+      while (pollAttempts < pollMaxAttempts) {
+        await new Promise(r => setTimeout(r, 5000));
+        const assetResp = await fetch(`/api/mux/asset/${finalAssetId}`);
+        const assetData = await assetResp.json();
+        
+        if (assetData.playback_ids && assetData.playback_ids.length > 0) {
+          finalPlaybackId = assetData.playback_ids[0].id;
+          break;
+        }
+        
+        pollAttempts++;
+      }
+
+      if (!finalPlaybackId) throw new Error('Could not find playback ID');
+
+      // 5. Success Callback
+      await onSuccess(finalAssetId, finalPlaybackId);
+      toast.success('Video processed successfully!', { id: toastId });
+
+    } catch (err: any) {
+      toast.error(err.message, { id: toastId });
+    } finally {
+      setIsUploadingVideo(false);
+    }
+  };
+
+  const handleAddVideoMetadata = async (assetId: string, playbackId: string) => {
+    if (!selectedCourseForVideos) return;
+    try {
+      const { error } = await supabase.from('course_videos').insert([{
+        ...newVideo,
+        mux_asset_id: assetId,
+        mux_playback_id: playbackId,
+        course_id: selectedCourseForVideos.id
+      }]);
+      if (error) throw error;
+      toast.success('Video added to course');
+      setIsVideoAdding(false);
+      fetchData();
+    } catch (err: any) {
+      toast.error(err.message);
+    }
+  };
+
+  const handleDeleteVideo = async (video: any) => {
+    if (!confirm('Are you sure? This will delete the video from Mux and metadata from Supabase.')) return;
+    const toastId = toast.loading('Deleting video...');
+    try {
+      // 1. Delete from Mux
+      if (video.mux_asset_id) {
+        await fetch(`/api/mux/asset/${video.mux_asset_id}`, { method: 'DELETE' });
+      }
+      
+      // 2. Delete from Supabase
+      const { error } = await supabase.from('course_videos').delete().eq('id', video.id);
+      if (error) throw error;
+      
+      toast.success('Video deleted from Mux and Supabase', { id: toastId });
+      fetchData();
+    } catch (err: any) {
+      toast.error(err.message, { id: toastId });
+    }
+  };
+  const [isAddingCourse, setIsAddingCourse] = useState(false);
+  const [isAddingProduct, setIsAddingProduct] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -57,6 +282,18 @@ export default function Admin() {
     category: 'Fiction',
     cosmofeed_url: '',
     seller_id: ''
+  });
+
+  const [newCourse, setNewCourse] = useState({
+    title: '',
+    ebook_id: '', // Linked Ebook
+    category: 'Mastery',
+    description: '',
+    price: 0,
+    commission_amount: 0,
+    cover_url: '',
+    file_url: '', // Intro Video Mux Playback ID
+    intro_mux_asset_id: '' // Intro Video Mux Asset ID
   });
 
   const [editFormData, setEditFormData] = useState<Partial<Ebook>>({});
@@ -151,12 +388,11 @@ export default function Admin() {
       .order('created_at', { ascending: false });
     if (ebooksData) setEbooks(ebooksData as Ebook[]);
 
+    const { data: coursesData } = await supabase.from('courses').select('*');
+    
     const { data: ordersData, error: ordersError } = await supabase
       .from('orders')
-      .select(`
-        *,
-        ebook:ebooks(*)
-      `)
+      .select('*')
       .order('created_at', { ascending: false });
     
     if (ordersError) {
@@ -166,11 +402,18 @@ export default function Admin() {
     const { data: allProfiles } = await supabase.from('profiles').select('*');
     
     if (ordersData && allProfiles) {
-      const enrichedOrders = ordersData.map(order => ({
-        ...order,
-        buyer: allProfiles.find(p => p.uid === order.user_id),
-        referrer_profile: allProfiles.find(p => p.uid === order.referrer_id)
-      }));
+      const enrichedOrders = ordersData.map(order => {
+        const ebook = ebooksData?.find(e => e.id === order.ebook_id);
+        const course = coursesData?.find(c => c.id === order.ebook_id);
+        
+        return {
+          ...order,
+          ebook: ebook || null,
+          course: course || null,
+          buyer: allProfiles.find(p => p.uid === order.user_id),
+          referrer_profile: allProfiles.find(p => p.uid === order.referrer_id)
+        };
+      });
       setOrders(enrichedOrders as any[]);
     } else if (ordersData) {
       setOrders(ordersData as any[]);
@@ -205,6 +448,25 @@ export default function Admin() {
       .select('*')
       .order('created_at', { ascending: false });
     if (chatData) setCommunityMessages(chatData);
+
+    const { data: courseData, error: courseError } = await supabase
+      .from('courses')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (courseError) {
+      console.error('Course Fetch Error:', courseError);
+      if (courseError.message?.includes('not found')) {
+        toast.error("Suppabase 'courses' table not found. Check console for SQL.");
+      }
+    }
+    if (courseData) setCourses(courseData);
+
+    const { data: videoData, error: videoError } = await supabase
+      .from('course_videos')
+      .select('*, courses(title)')
+      .order('order_index', { ascending: true });
+    if (videoError) console.error('Video Fetch Error:', videoError);
+    if (videoData) setCourseVideos(videoData);
   };
 
   useEffect(() => {
@@ -257,7 +519,7 @@ export default function Admin() {
       if (error) throw error;
       
       toast.success('Ebook added successfully');
-      setIsAdding(false);
+      setIsAddingProduct(false);
       setNewEbook({
         title: '', author: '', description: '', price: 0, commission_amount: 0,
         cover_url: '', file_url: '', category: 'Fiction', cosmofeed_url: '', seller_id: ''
@@ -309,21 +571,21 @@ export default function Admin() {
       const { error: orderError } = await supabase.from('orders').update({ status: 'success' }).eq('id', order.id);
       if (orderError) throw orderError;
 
+      const productCommission = order.commission_amount || (order as any).ebook?.commission_amount || (order as any).course?.commission_amount || 0;
+
       if (order.referrer_id) {
         const { data: refProfile } = await supabase.from('profiles').select('*').eq('uid', order.referrer_id).single();
         if (refProfile) {
-          const commission = order.commission_amount || order.ebook?.commission_amount || 0;
-          await supabase.from('profiles').update({ affiliate_earnings: (refProfile.affiliate_earnings || 0) + commission }).eq('uid', order.referrer_id);
+          await supabase.from('profiles').update({ affiliate_earnings: (refProfile.affiliate_earnings || 0) + productCommission }).eq('uid', order.referrer_id);
         }
       }
 
-      const sellerId = order.ebook?.seller_id;
+      const sellerId = (order as any).ebook?.seller_id || (order as any).course?.seller_id;
       if (sellerId) {
         const { data: sellerProfile } = await supabase.from('profiles').select('*').eq('uid', sellerId).single();
         if (sellerProfile) {
-          const commission = order.commission_amount || order.ebook?.commission_amount || 0;
           const adminFee = 60;
-          const sellerNet = order.amount - commission - adminFee;
+          const sellerNet = order.amount - productCommission - adminFee;
           if (sellerNet > 0) {
             await supabase.from('profiles').update({ earnings: (sellerProfile.earnings || 0) + sellerNet }).eq('uid', sellerId);
           }
@@ -496,7 +758,7 @@ export default function Admin() {
           <NavItem id="banners" label="Hero Banners" icon={ImageIcon} />
           <NavItem id="community" label="Community" icon={Share2} />
           <NavItem id="reviews" label="Reviews" icon={BadgeCheck} />
-          <NavItem id="settings" label="Config" icon={Settings} />
+          <NavItem id="courses" label="Courses" icon={BookOpen} />
           <NavItem id="reports" label="Sales Report" icon={ChartBar} />
         </div>
       </div>
@@ -737,7 +999,9 @@ export default function Admin() {
                                      </span>
                                   </td>
                                   <td className="px-6 py-4">
-                                     <p className="text-xs font-bold text-zinc-900 line-clamp-1">{order.ebook?.title}</p>
+                                     <p className="text-xs font-bold text-zinc-900 line-clamp-1">
+                                       {order.ebook?.title || order.course?.title || 'Unknown Product'}
+                                     </p>
                                   </td>
                                   <td className="px-6 py-4">
                                      {order.referrer_id ? (
@@ -865,7 +1129,9 @@ export default function Admin() {
                                          </p>
                                          <p className="text-[10px] font-bold text-zinc-500">Email: {order.buyer?.email || 'No Email Registered'}</p>
                                          <p className="text-[9px] font-medium text-zinc-400 italic">User ID: {order.user_id}</p>
-                                         <p className="text-[10px] font-medium text-zinc-500 italic">{order.ebook?.title}</p>
+                                         <p className="text-[10px] font-medium text-zinc-500 italic">
+                                           {order.ebook?.title || order.course?.title || 'Unknown Product'}
+                                         </p>
                                          <div className="flex items-center gap-2 mt-2">
                                             <p className="text-xs font-black text-orange-600 bg-orange-100/50 w-fit px-2 rounded">UTR: {order.transaction_id}</p>
                                             {order.referrer_id && (
@@ -1201,9 +1467,6 @@ export default function Admin() {
                 </Card>
               ))}
            </div>
-           <Button className="fixed bottom-8 left-8 w-16 h-16 rounded-full bg-zinc-900 shadow-2xl hover:scale-110 active:scale-95 transition-all text-white p-0 z-50" onClick={() => setIsAdding(true)}>
-             <Plus className="w-8 h-8" />
-           </Button>
         </div>
       )}
 
@@ -1507,51 +1770,303 @@ export default function Admin() {
         </div>
       )}
 
-      {activeTab === 'settings' && (
+      {activeTab === 'courses' && (
         <div className="space-y-6 animate-in fade-in duration-500">
-           <Card className="border-none shadow-2xl rounded-[2.5rem] bg-white overflow-hidden">
-              <CardHeader className="bg-zinc-900 text-white p-6 sm:p-8">
-                <CardTitle className="text-xl sm:text-2xl font-black flex items-center gap-2">
-                  <Settings className="w-6 h-6 text-blue-500" />
-                  Platform Configuration
-                </CardTitle>
-                <CardDescription className="text-zinc-400 font-bold uppercase text-[10px] tracking-widest mt-1">Configure global application variables</CardDescription>
-              </CardHeader>
-              <CardContent className="p-8 space-y-8">
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <div className="space-y-4">
-                       <h3 className="text-sm font-black italic uppercase tracking-wider text-zinc-400">Payment Gateway Intel</h3>
-                       <div className="space-y-2">
-                          <Label className="text-[10px] font-black uppercase text-zinc-400 ml-1">Universal UPI ID (Merchant)</Label>
-                          <div className="flex gap-2">
-                            <Input 
-                              value={platformUpi} 
-                              onChange={e => setPlatformUpi(e.target.value)} 
-                              className="h-12 flex-1 rounded-xl border-2 font-bold focus:border-blue-500"
-                              placeholder="7417645286@slc"
+          <div className="flex justify-between items-center bg-white p-6 rounded-[2.5rem] shadow-xl border border-zinc-100">
+            <div>
+              <h2 className="text-2xl font-black text-zinc-900 tracking-tight">University Courses</h2>
+              <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest mt-1 italic">Knowledge Economy Management</p>
+            </div>
+            <Dialog open={isAddingCourse} onOpenChange={setIsAddingCourse}>
+              <DialogTrigger asChild>
+                <Button className="bg-orange-600 hover:bg-orange-700 text-white rounded-2xl gap-2 font-black shadow-lg shadow-orange-600/20">
+                  <Plus className="w-5 h-5" />
+                  Launch Course
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-[600px] rounded-[2.5rem] p-8 border-none shadow-2xl">
+                <DialogHeader>
+                  <DialogTitle className="text-2xl font-black">Create New Course</DialogTitle>
+                </DialogHeader>
+                <form onSubmit={handleAddCourse} className="space-y-4 py-4">
+                   <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Course Title</Label>
+                        <Input required value={newCourse.title} onChange={e => setNewCourse({...newCourse, title: e.target.value})} className="rounded-xl" />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Category</Label>
+                        <Input required value={newCourse.category} onChange={e => setNewCourse({...newCourse, category: e.target.value})} className="rounded-xl" />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Linked Ebook</Label>
+                        <select 
+                          value={newCourse.ebook_id} 
+                          onChange={e => setNewCourse({...newCourse, ebook_id: e.target.value})}
+                          className="flex h-10 w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950"
+                        >
+                          <option value="">None (Stand-alone/Individual)</option>
+                          {ebooks.map(eb => (
+                            <option key={eb.id} value={eb.id}>{eb.title}</option>
+                          ))}
+                        </select>
+                      </div>
+                   </div>
+                   <div className="space-y-2">
+                      <Label>Description</Label>
+                      <Textarea required value={newCourse.description} onChange={e => setNewCourse({...newCourse, description: e.target.value})} className="rounded-xl min-h-[100px]" />
+                   </div>
+                   <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Enrollment Fee (₹)</Label>
+                        <Input type="number" required value={newCourse.price} onChange={e => setNewCourse({...newCourse, price: Number(e.target.value)})} className="rounded-xl" />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Affiliate Commission (₹)</Label>
+                        <Input type="number" required value={newCourse.commission_amount} onChange={e => setNewCourse({...newCourse, commission_amount: Number(e.target.value)})} className="rounded-xl" />
+                      </div>
+                   </div>
+                   <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Upload Thumbnail</Label>
+                        <div className="flex gap-2">
+                          <Input required value={newCourse.cover_url} onChange={e => setNewCourse({...newCourse, cover_url: e.target.value})} className="rounded-xl flex-1" placeholder="Paste Image URL or Upload" />
+                          <div className="relative">
+                            <Button type="button" size="icon" variant="outline" className="rounded-xl h-10 w-10">
+                              <ImageIcon className="w-4 h-4" />
+                            </Button>
+                            <input 
+                              type="file" 
+                              className="absolute inset-0 opacity-0 cursor-pointer" 
+                              accept="image/*" 
+                              onChange={async (e) => {
+                                if (e.target.files?.[0]) {
+                                  const file = e.target.files[0];
+                                  const { data, error: storageError } = await supabase.storage.from('ebooks').upload(`covers/${Math.random()}.${file.name.split('.').pop()}`, file);
+                                  if (!storageError && data) {
+                                    const { data: { publicUrl } } = supabase.storage.from('ebooks').getPublicUrl(data.path);
+                                    setNewCourse(prev => ({ ...prev, cover_url: publicUrl }));
+                                    toast.success('Thumbnail uploaded');
+                                  } else {
+                                    toast.error('Upload failed');
+                                  }
+                                }
+                              }} 
                             />
-                            <Button className="h-12 rounded-xl bg-blue-600 hover:bg-blue-700 font-black" onClick={() => toast.success('UPI CONFIG SAVED TEMPORARILY')}>SAVE</Button>
                           </div>
-                          <p className="text-[10px] text-zinc-400 font-bold italic mt-2">
-                             * Note: This currently updates the local state. For permanent changes, please update the hardcoded ID in ProductDetail.tsx or contact support.
-                          </p>
-                       </div>
-                    </div>
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Intro Video (Direct Mux Upload)</Label>
+                        <div className={`relative h-12 border-2 border-dashed rounded-xl flex items-center justify-center transition-all ${isUploadingVideo ? 'border-orange-500 bg-orange-50' : 'border-zinc-200 bg-zinc-50 hover:bg-white'}`}>
+                          {isUploadingVideo ? (
+                            <div className="flex items-center gap-2 px-4">
+                              <Loader2 className="w-3 h-3 animate-spin text-orange-600" />
+                              <span className="text-[10px] font-black text-orange-600 uppercase italic">Processing {videoUploadProgress}%</span>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2 px-4">
+                              <Upload className="w-4 h-4 text-zinc-400" />
+                              <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">{newCourse.file_url ? 'VIDEO READY' : 'SELECT VIDEO'}</span>
+                              <input 
+                                type="file" 
+                                accept="video/*" 
+                                className="absolute inset-0 opacity-0 cursor-pointer" 
+                                onChange={(e) => {
+                                  if (e.target.files?.[0]) {
+                                    handleMuxUpload(e.target.files[0], (assetId, playbackId) => {
+                                      setNewCourse(prev => ({ ...prev, file_url: playbackId, intro_mux_asset_id: assetId }));
+                                    });
+                                  }
+                                }}
+                              />
+                            </div>
+                          )}
+                        </div>
+                        {newCourse.file_url && <p className="text-[9px] text-green-600 font-bold text-center mt-1">Playback ID: {newCourse.file_url} ✓</p>}
+                      </div>
+                   </div>
+                   <Button type="submit" className="w-full bg-orange-600 rounded-xl h-12 font-black text-lg">LAUNCH COURSE</Button>
+                </form>
+              </DialogContent>
+            </Dialog>
+          </div>
 
-                    <div className="space-y-4">
-                       <h3 className="text-sm font-black italic uppercase tracking-wider text-zinc-400">Affiliate Ecosystem</h3>
-                       <div className="p-4 bg-zinc-50 border border-zinc-100 rounded-2xl">
-                          <p className="text-xs font-bold text-zinc-500 leading-relaxed italic">
-                             Affiliate tracking is active via Referrer ID. AI Help is integrated via Gemini API.
-                             No alterations requested. Systems standing by.
-                          </p>
-                       </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {courses.map(course => (
+              <Card key={course.id} className="border-none shadow-xl rounded-[2.5rem] bg-white overflow-hidden group">
+                <div className="flex h-48 sm:h-56">
+                  <div className="w-1/3 relative">
+                    <img src={course.cover_url} className="absolute inset-0 w-full h-full object-cover" />
+                    <div className="absolute inset-0 bg-black/20 group-hover:bg-black/0 transition-colors" />
+                  </div>
+                  <div className="w-2/3 p-6 flex flex-col justify-between">
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <Badge className="bg-zinc-100 text-zinc-500 hover:bg-zinc-100 border-none rounded-md text-[10px] uppercase font-black tracking-widest">{course.category}</Badge>
+                        {course.ebook_id && <Badge className="bg-blue-100 text-blue-500 border-none rounded-md text-[10px] uppercase font-black tracking-widest">Ebook Linked</Badge>}
+                        <p className="text-[10px] font-black text-orange-500 uppercase">₹{course.price}</p>
+                      </div>
+                      <h3 className="text-xl font-black text-zinc-900 tracking-tight leading-tight">{course.title}</h3>
+                      {course.ebook_id && (
+                        <p className="text-[10px] font-bold text-zinc-400 mt-1">
+                          Attached to: {ebooks.find(e => e.id === course.ebook_id)?.title || 'Unknown Ebook'}
+                        </p>
+                      )}
                     </div>
+                      <div className="flex gap-2">
+                        <Button 
+                          variant="secondary" 
+                          size="sm" 
+                          className="flex-1 rounded-xl font-black text-xs gap-2"
+                          onClick={() => setSelectedCourseForVideos(course)}
+                        >
+                          <Play className="w-3 h-3 fill-current" />
+                          Manage Videos
+                        </Button>
+                        <Button 
+                          variant="outline" 
+                          size="icon" 
+                          className="rounded-xl w-10 h-10 text-red-500 hover:bg-red-50"
+                          onClick={() => handleDeleteCourse(course)}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+
+          {/* Video Management Modal */}
+          <Dialog open={!!selectedCourseForVideos} onOpenChange={(open) => !open && setSelectedCourseForVideos(null)}>
+            <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto rounded-[3rem] p-0 border-none shadow-2xl">
+              <div className="bg-zinc-900 p-8 text-white">
+                <DialogTitle className="text-3xl font-black italic tracking-tighter">
+                  {selectedCourseForVideos?.title}
+                </DialogTitle>
+                <div className="flex items-center justify-between mt-6">
+                   <p className="text-zinc-400 font-bold uppercase text-xs tracking-widest">Syllabus Builder • Video Stream</p>
+                   <Button 
+                    className="bg-orange-600 hover:bg-orange-700 text-white rounded-xl gap-2 font-black"
+                    onClick={() => setIsVideoAdding(true)}
+                   >
+                     <Plus className="w-4 h-4" /> Add Lesson
+                   </Button>
+                </div>
+              </div>
+
+              <div className="p-8">
+                 <div className="space-y-4">
+                    {courseVideos.filter(v => v.course_id === selectedCourseForVideos?.id).map((video, idx) => (
+                      <div key={video.id} className="flex items-center justify-between p-4 bg-zinc-50 hover:bg-zinc-100 border border-zinc-100 rounded-2xl transition-colors group">
+                        <div className="flex items-center gap-4">
+                          <div className="w-10 h-10 rounded-xl bg-white border-2 border-zinc-200 flex items-center justify-center font-black text-zinc-400">
+                            {idx + 1}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <h4 className="text-sm font-black text-zinc-900">{video.title}</h4>
+                              {video.is_preview && <Badge className="bg-green-100 text-green-600 border-none text-[8px] font-black uppercase tracking-widest px-1.5 h-4">Preview Free</Badge>}
+                            </div>
+                            <p className="text-[10px] text-zinc-400 font-bold font-mono tracking-tighter">{video.mux_playback_id}</p>
+                          </div>
+                        </div>
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          className="text-zinc-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
+                          onClick={() => handleDeleteVideo(video)}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    ))}
+                    {courseVideos.filter(v => v.course_id === selectedCourseForVideos?.id).length === 0 && (
+                      <div className="py-12 text-center text-zinc-300 italic uppercase font-black text-sm">Course is currently empty. Add your first lesson.</div>
+                    )}
                  </div>
-              </CardContent>
-           </Card>
+              </div>
+            </DialogContent>
+          </Dialog>
+
+          {/* Add Video Dialog */}
+          <Dialog open={isVideoAdding} onOpenChange={setIsVideoAdding}>
+            <DialogContent className="sm:max-w-[500px] rounded-[2.5rem] p-8 border-none shadow-2xl">
+              <DialogHeader>
+                <DialogTitle className="text-2xl font-black">Add New Lesson</DialogTitle>
+                <DialogDescription className="font-bold text-zinc-400">Upload video directly to Mux</DialogDescription>
+              </DialogHeader>
+              <form onSubmit={(e) => {
+                e.preventDefault();
+                const file = (e.currentTarget.elements.namedItem('video-file') as HTMLInputElement).files?.[0];
+                if (file) {
+                  handleMuxUpload(file, (assetId, playbackId) => handleAddVideoMetadata(assetId, playbackId));
+                } else {
+                  toast.error('Please select a video file');
+                }
+              }} className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <Label>Video Title</Label>
+                  <Input required value={newVideo.title} onChange={e => setNewVideo({...newVideo, title: e.target.value})} className="rounded-xl" />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label>Video File</Label>
+                  <div className={`relative h-24 border-2 border-dashed rounded-2xl flex flex-col items-center justify-center transition-all ${isUploadingVideo ? 'border-orange-500 bg-orange-50' : 'border-zinc-200 bg-zinc-50 hover:bg-white'}`}>
+                    {isUploadingVideo ? (
+                      <div className="w-full px-8 text-center space-y-2">
+                        <p className="text-[10px] font-black text-orange-600 uppercase tracking-widest">Uploading... {videoUploadProgress}%</p>
+                        <div className="w-full bg-zinc-200 h-1.5 rounded-full overflow-hidden">
+                          <div className="bg-orange-500 h-full transition-all duration-300" style={{ width: `${videoUploadProgress}%` }} />
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <Upload className="w-6 h-6 text-zinc-400 mb-2" />
+                        <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Select MP4/MOV</p>
+                        <input name="video-file" type="file" accept="video/*" className="absolute inset-0 opacity-0 cursor-pointer" />
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between p-4 bg-zinc-50 rounded-2xl border border-zinc-100">
+                  <Label className="font-black cursor-pointer" htmlFor="isPreview">Free Overview/Preview?</Label>
+                  <input 
+                    type="checkbox" 
+                    id="isPreview" 
+                    checked={newVideo.is_preview} 
+                    onChange={e => setNewVideo({...newVideo, is_preview: e.target.checked})}
+                    className="w-5 h-5 accent-orange-600 rounded" 
+                  />
+                </div>
+                <Button 
+                  type="submit" 
+                  disabled={isUploadingVideo}
+                  className="w-full bg-zinc-900 text-white rounded-xl h-12 font-black transition-transform active:scale-95 shadow-xl shadow-zinc-900/10"
+                >
+                  {isUploadingVideo ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : 'UPLOAD & SYNC'}
+                </Button>
+              </form>
+            </DialogContent>
+          </Dialog>
         </div>
       )}
+
+      <Button 
+        className="fixed bottom-8 left-8 w-16 h-16 rounded-full bg-zinc-900 shadow-2xl hover:scale-110 active:scale-95 transition-all text-white p-0 z-50 flex items-center justify-center" 
+        onClick={() => {
+          if (activeTab === 'courses') {
+            setIsAddingCourse(true);
+          } else {
+            setIsAddingProduct(true);
+          }
+        }}
+      >
+        <Plus className="w-8 h-8" />
+      </Button>
 
       {/* Detailed User Dossier View */}
       <Dialog open={!!viewingUser} onOpenChange={() => setViewingUser(null)}>
@@ -1685,7 +2200,7 @@ export default function Admin() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={isAdding} onOpenChange={setIsAdding}>
+      <Dialog open={isAddingProduct} onOpenChange={setIsAddingProduct}>
         <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto rounded-3xl">
           <DialogHeader><DialogTitle className="text-2xl font-black">Create Product</DialogTitle></DialogHeader>
           <form onSubmit={handleAddEbook} className="space-y-4 pt-4">

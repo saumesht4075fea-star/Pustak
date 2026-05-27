@@ -9,7 +9,7 @@ import 'react-pdf/dist/Page/TextLayer.css';
 // Set up worker
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
-import { ShoppingBag, Download, Star, MessageSquare, CheckCircle2, XCircle, BookOpen, Maximize2, X, Loader2, ExternalLink, Share2, Copy, BadgeCheck, TrendingUp } from 'lucide-react';
+import { ShoppingBag, Download, Star, MessageSquare, CheckCircle2, XCircle, BookOpen, Maximize2, X, Loader2, ExternalLink, Share2, Copy, BadgeCheck, TrendingUp, Play } from 'lucide-react';
 import PustakViewer from '../components/PustakViewer';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -18,14 +18,33 @@ import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/componen
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription, DialogClose } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { useSearchParams } from 'react-router-dom';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useSearchParams, Link } from 'react-router-dom';
+import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
-import { Ebook, Order } from '../types';
+import { Ebook, Order, UserCourseProgress, Course } from '../types';
 
 export default function Orders({ user }: { user: User | null }) {
   const [orders, setOrders] = useState<Order[]>([]);
+  const [courses, setCourses] = useState<Course[]>([]);
   const [profile, setProfile] = useState<any>(null);
+  const [courseProgress, setCourseProgress] = useState<Record<string, { completed: number, total: number }>>({});
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'ebooks');
   const [loading, setLoading] = useState(true);
+
+  // Sync tab with URL
+  useEffect(() => {
+    const tabFromUrl = searchParams.get('tab');
+    if (tabFromUrl && tabFromUrl !== activeTab) {
+      setActiveTab(tabFromUrl);
+    }
+  }, [searchParams]);
+
+  const onTabChange = (val: string) => {
+    setActiveTab(val);
+    setSearchParams({ tab: val });
+  };
   const [reviewingEbookId, setReviewingEbookId] = useState<string | null>(null);
   const [readingEbook, setReadingEbook] = useState<Ebook | null>(null);
   const [readingBlobUrl, setReadingBlobUrl] = useState<string | null>(null);
@@ -67,31 +86,76 @@ export default function Orders({ user }: { user: User | null }) {
     }
 
     const fetchOrders = async () => {
-      const { data: ordersData, error: ordersError } = await supabase
-        .from('orders')
-        .select(`
-          *,
-          ebook:ebooks(id, title, author, description, price, commission_amount, cover_url, file_url, category, cosmofeed_url, seller_id, is_verified, is_deleted, created_at)
-        `)
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
+      setLoading(true);
+      try {
+        const { data: coursesData } = await supabase.from('courses').select('*');
+        const { data: ebooksData } = await supabase.from('ebooks').select('*');
+        setCourses(coursesData || []);
+        
+        const { data: ordersData, error: ordersError } = await supabase
+          .from('orders')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false });
 
-      if (ordersError) {
-        toast.error('Failed to fetch orders');
+        if (ordersError) throw ordersError;
+
+        // Manual matching for courses AND ebooks
+        const processedOrders = (ordersData as any[]).map(order => {
+          const ebook = ebooksData?.find(e => e.id === order.ebook_id);
+          const directCourse = coursesData?.find(c => c.id === order.ebook_id);
+          
+          // CRITICAL: Check if this is an ebook that has a linked course
+          const linkedCourse = ebook ? coursesData?.find(c => c.ebook_id === ebook.id) : null;
+          
+          return { 
+            ...order, 
+            ebook: ebook || null,
+            course: directCourse || linkedCourse || null 
+          };
+        });
+
+        setOrders(processedOrders as Order[]);
+        
+        // Fetch progress for all accessible courses
+        const accessibleCourseIds = processedOrders
+          .filter(o => o.course && (o.status === 'success' || o.status === 'completed'))
+          .map(o => o.course!.id);
+
+        if (accessibleCourseIds.length > 0) {
+          const { data: progressData } = await supabase
+            .from('course_video_progress')
+            .select('course_id, video_id')
+            .eq('user_id', user.id)
+            .eq('is_completed', true)
+            .in('course_id', accessibleCourseIds);
+          
+          const { data: videosCount } = await supabase
+            .from('course_videos')
+            .select('course_id, id')
+            .in('course_id', accessibleCourseIds);
+          
+          const progressMap: Record<string, { completed: number, total: number }> = {};
+          accessibleCourseIds.forEach(id => {
+            const completed = progressData?.filter(p => p.course_id === id).length || 0;
+            const total = videosCount?.filter(v => v.course_id === id).length || 0;
+            progressMap[id] = { completed, total };
+          });
+          setCourseProgress(progressMap);
+        }
+        
+        const { data: pData } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('uid', user.id)
+          .single();
+        if (pData) setProfile(pData);
+      } catch (err: any) {
+        console.error('Error fetching library:', err);
+        toast.error('Failed to fetch library');
+      } finally {
         setLoading(false);
-        return;
       }
-
-      setOrders(ordersData as Order[]);
-      
-      const { data: pData } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('uid', user.id)
-        .single();
-      if (pData) setProfile(pData);
-      
-      setLoading(false);
     };
 
     fetchOrders();
@@ -138,6 +202,13 @@ export default function Orders({ user }: { user: User | null }) {
     }
   };
 
+  const ebookOrders = orders.filter(o => o.ebook);
+  const purchasedCourses = Array.from(new Set(
+    orders
+      .filter(o => o.course && (o.status === 'success' || o.status === 'completed'))
+      .map(o => o.course!)
+  ));
+
   if (!user) {
     return (
       <div className="text-center py-20 space-y-6">
@@ -156,156 +227,256 @@ export default function Orders({ user }: { user: User | null }) {
   return (
     <div className="max-w-4xl mx-auto space-y-8">
       <div>
-        <h1 className="text-3xl font-bold tracking-tighter">My Library</h1>
-        <p className="text-zinc-500">Access your purchased ebooks and share your thoughts.</p>
+        <h1 className="text-3xl font-black tracking-tight italic">MY LIBRARY & COURSES</h1>
+        <p className="text-zinc-500 font-medium font-inter">Access your purchased assets and track your learning progress.</p>
       </div>
 
-      <div className="grid gap-6">
-        {orders.map((order) => (
-          <motion.div
-            key={order.id}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-          >
-            <Card className="border-zinc-200 overflow-hidden">
-              <CardContent className="p-6 flex flex-col sm:flex-row gap-6">
-                <div className="flex-shrink-0">
-                  {order.ebook?.cover_url && <img src={order.ebook.cover_url} alt="" className="w-32 h-44 object-cover rounded-lg shadow-md" />}
-                </div>
-                <div className="flex-grow space-y-4">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <h3 className="text-xl font-bold tracking-tight">{order.ebook?.title}</h3>
-                      <p className="text-zinc-500">by {order.ebook?.author}</p>
+      <Tabs value={activeTab} onValueChange={onTabChange} className="w-full">
+        <TabsList className="bg-zinc-100/50 p-1 rounded-2xl mb-8 w-full sm:w-fit">
+          <TabsTrigger value="ebooks" className="rounded-xl px-8 font-black uppercase text-[10px] tracking-widest data-[state=active]:bg-white data-[state=active]:shadow-sm py-3">
+            E-BOOKS ({ebookOrders.length})
+          </TabsTrigger>
+          <TabsTrigger value="courses" className="rounded-xl px-8 font-black uppercase text-[10px] tracking-widest data-[state=active]:bg-white data-[state=active]:shadow-sm py-3">
+            COURSES ({purchasedCourses.length})
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="ebooks" className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <div className="grid gap-6">
+            {ebookOrders.map((order) => (
+              <motion.div
+                key={order.id}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+              >
+                <Card className="border-zinc-100 overflow-hidden rounded-[2.5rem] hover:shadow-2xl transition-all duration-500 bg-white group">
+                  <CardContent className="p-6 flex flex-col sm:flex-row gap-6">
+                    <div className="flex-shrink-0 relative">
+                      {order.ebook?.cover_url && (
+                        <img 
+                          src={order.ebook.cover_url} 
+                          alt="" 
+                          className="w-32 h-44 object-cover rounded-[1.5rem] shadow-2xl group-hover:scale-105 transition-transform duration-500" 
+                        />
+                      )}
                     </div>
-                    <div className="text-right">
-                      <p className="text-xs text-zinc-400 font-mono">Order #{order.id.slice(-6)}</p>
-                      <p className="text-xs text-zinc-500">{new Date(order.created_at).toLocaleDateString()}</p>
-                    </div>
-                  </div>
-                  
-                    {order.status === 'success' || order.status === 'completed' ? (
-                      <div className="w-full mt-2 p-4 bg-zinc-50 rounded-2xl border border-zinc-100 flex flex-col gap-3 shadow-inner">
-                        <div className="flex items-center justify-between">
-                          <Label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Unique Referral Code</Label>
-                          <Badge className="bg-green-100 text-green-700 border-none font-bold text-[9px] px-2 py-0.5">
-                            ₹{order.ebook?.commission_amount || 0} COMMISSION
+                    <div className="flex-grow space-y-4">
+                      <div className="flex justify-between items-start">
+                        <div className="space-y-1">
+                          <Badge className="bg-orange-50 text-orange-600 border-none rounded-full px-3 py-0.5 text-[8px] font-black uppercase tracking-widest">
+                            READING MATERIAL
                           </Badge>
+                          <h3 className="text-xl font-black tracking-tight text-zinc-900 uppercase italic">
+                            {order.ebook?.title}
+                          </h3>
+                          <p className="text-zinc-400 font-bold italic text-sm">
+                            by {order.ebook?.author}
+                          </p>
                         </div>
-                        
-                        <div className="flex gap-2">
-                          <Input 
-                            readOnly 
-                            value={order.referral_code || `REF-${order.id.slice(0, 8)}`}
-                            className="h-12 text-sm bg-white border-zinc-200 text-zinc-900 font-mono font-black uppercase rounded-xl"
-                          />
-                          <Button 
-                            size="icon"
-                            variant="outline" 
-                            className="h-12 w-12 border-zinc-200 text-zinc-600 hover:bg-zinc-100 shrink-0 rounded-xl"
-                            onClick={() => {
-                              navigator.clipboard.writeText(order.referral_code || `REF-${order.id.slice(0, 8)}`);
-                              toast.success('Referral code copied!');
-                            }}
-                          >
-                            <Copy className="w-5 h-5" />
-                          </Button>
+                        <div className="text-right">
+                          <p className="text-[10px] text-zinc-300 font-mono font-bold tracking-tighter">ORDER ID #{order.id.slice(-8).toUpperCase()}</p>
+                          <p className="text-[10px] text-zinc-400 font-black uppercase tracking-widest mt-1">{new Date(order.created_at).toLocaleDateString()}</p>
                         </div>
-                        <p className="text-[10px] text-zinc-400 font-bold uppercase italic tracking-tighter">
-                          * Friends enter this code on the home page to support you.
-                        </p>
                       </div>
-                    ) : null}
-
-                    <div className="flex flex-wrap gap-3">
+                      
                       {order.status === 'success' || order.status === 'completed' ? (
-                        <>
-                        <Button 
-                          className="bg-orange-600 hover:bg-orange-700 gap-2 font-bold"
-                          onClick={() => setReadingEbook(order.ebook || null)}
-                        >
-                          <BookOpen className="w-4 h-4" />
-                          Read Now
-                        </Button>
+                        <div className="space-y-4">
+                          <div className="flex flex-wrap gap-3">
+                            <Button 
+                              className="bg-orange-600 hover:bg-orange-700 gap-2 font-black rounded-xl px-6 h-12 shadow-lg shadow-orange-600/20"
+                              onClick={() => setReadingEbook(order.ebook || null)}
+                            >
+                              <BookOpen className="w-4 h-4" />
+                              READ NOW
+                            </Button>
 
-                        {profile?.role === 'admin' && (
-                          <Button variant="outline" className="gap-2 border-zinc-200 text-zinc-600 hover:bg-zinc-50" asChild>
-                            <a href={order.ebook?.file_url} target="_blank" rel="noopener noreferrer">
-                              <Download className="w-4 h-4" />
-                              Download
-                            </a>
-                          </Button>
-                        )}
-                      </>
-                    ) : order.status === 'pending' ? (
-                      <div className="flex items-center gap-2 px-4 py-2 bg-yellow-50 text-yellow-700 rounded-xl border border-yellow-100 italic text-sm font-medium">
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        Verification Pending... (UTR: {order.transaction_id})
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-2 px-4 py-2 bg-red-50 text-red-700 rounded-xl border border-red-100 italic text-sm font-medium">
-                        <XCircle className="w-4 h-4" />
-                        Payment Failed or Rejected
-                      </div>
-                    )}
-                    
-                    <Dialog open={reviewingEbookId === order.ebook_id} onOpenChange={(open) => !open && setReviewingEbookId(null)}>
-                      <DialogTrigger asChild>
-                        <Button variant="outline" className="gap-2" onClick={() => setReviewingEbookId(order.ebook_id)}>
-                          <MessageSquare className="w-4 h-4" />
-                          Write Review
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent>
-                        <DialogHeader>
-                          <DialogTitle>Review {order.ebook?.title}</DialogTitle>
-                          <DialogDescription>
-                            Share your feedback and rate this ebook.
-                          </DialogDescription>
-                        </DialogHeader>
-                        <form onSubmit={handleReview} className="space-y-4 py-4">
-                          <div className="space-y-2">
-                            <Label>Rating</Label>
-                            <div className="flex gap-2">
-                              {[1, 2, 3, 4, 5].map((s) => (
-                                <button
-                                  key={s}
-                                  type="button"
-                                  onClick={() => setRating(s)}
-                                  className={`p-1 transition-colors ${s <= rating ? 'text-orange-500' : 'text-zinc-200'}`}
-                                >
-                                  <Star className={`w-8 h-8 ${s <= rating ? 'fill-current' : ''}`} />
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="comment">Your Thoughts</Label>
-                            <Textarea 
-                              id="comment" 
-                              placeholder="What did you think of this book?" 
-                              value={comment}
-                              onChange={(e) => setComment(e.target.value)}
-                              required
-                            />
-                          </div>
-                          <Button type="submit" className="w-full bg-orange-600 hover:bg-orange-700">Submit Review</Button>
-                        </form>
-                      </DialogContent>
-                    </Dialog>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-        ))}
+                            {order.course && (
+                              <Button 
+                                variant="outline"
+                                className="border-blue-100 text-blue-600 hover:bg-blue-50 gap-2 font-black rounded-xl px-6 h-12"
+                                asChild
+                              >
+                                <Link to={`/course/${order.course.id}`}>
+                                  <Play className="w-4 h-4 fill-current" />
+                                  WATCH LINKED COURSE
+                                </Link>
+                              </Button>
+                            )}
 
-        {orders.length === 0 && !loading && (
-          <div className="text-center py-20 border-2 border-dashed border-zinc-200 rounded-3xl">
-            <p className="text-zinc-500">You haven't purchased any ebooks yet.</p>
+                            <Dialog open={reviewingEbookId === order.ebook_id} onOpenChange={(open) => !open && setReviewingEbookId(null)}>
+                              <DialogTrigger asChild>
+                                <Button variant="ghost" className="gap-2 text-zinc-300 hover:text-zinc-600 font-black text-[10px] tracking-widest" onClick={() => setReviewingEbookId(order.ebook_id)}>
+                                  <MessageSquare className="w-4 h-4" />
+                                  SUBMIT REVIEW
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent className="rounded-[2.5rem] bg-white border-zinc-100">
+                                <DialogHeader>
+                                  <DialogTitle className="font-black italic text-2xl tracking-tighter">REVIEW {order.ebook?.title}</DialogTitle>
+                                  <DialogDescription className="font-bold text-zinc-400">
+                                    Share your honest feedback with the community.
+                                  </DialogDescription>
+                                </DialogHeader>
+                                <form onSubmit={handleReview} className="space-y-6 py-4">
+                                  <div className="space-y-2">
+                                    <Label className="font-black uppercase text-[10px] tracking-widest text-zinc-400">Your Experience</Label>
+                                    <div className="flex gap-2">
+                                      {[1, 2, 3, 4, 5].map((s) => (
+                                        <button
+                                          key={s}
+                                          type="button"
+                                          onClick={() => setRating(s)}
+                                          className={`p-1 transition-all ${s <= rating ? 'text-orange-500 scale-110' : 'text-zinc-100'}`}
+                                        >
+                                          <Star className={`w-10 h-10 ${s <= rating ? 'fill-current' : ''}`} />
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </div>
+                                  <div className="space-y-2">
+                                    <Label htmlFor="comment" className="font-black uppercase text-[10px] tracking-widest text-zinc-400">Detailed Feedback</Label>
+                                    <Textarea 
+                                      id="comment" 
+                                      placeholder="What did you think of this book?" 
+                                      className="rounded-2xl border-zinc-100 bg-zinc-50 min-h-[140px] focus:ring-orange-600 focus:border-orange-600"
+                                      value={comment}
+                                      onChange={(e) => setComment(e.target.value)}
+                                      required
+                                    />
+                                  </div>
+                                  <Button type="submit" className="w-full bg-zinc-900 hover:bg-black rounded-2xl h-14 font-black italic tracking-tight text-lg">POST REVIEW</Button>
+                                </form>
+                              </DialogContent>
+                            </Dialog>
+                          </div>
+
+                          <div className="p-4 bg-zinc-50 rounded-2xl border border-zinc-100 space-y-3">
+                             <div className="flex items-center justify-between">
+                               <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Affiliate Program</span>
+                               <span className="text-[10px] font-black text-green-600 bg-green-50 px-2 py-0.5 rounded-full">₹{order.ebook?.commission_amount || 0} COMMISSION</span>
+                             </div>
+                             <div className="flex gap-2">
+                               <Input 
+                                 readOnly 
+                                 value={order.referral_code || `REF-${order.id.slice(0, 8)}`.toUpperCase()}
+                                 className="h-10 text-[10px] bg-white border-zinc-100 text-zinc-900 font-mono font-black uppercase rounded-xl tracking-widest"
+                               />
+                               <Button 
+                                 size="icon"
+                                 variant="outline" 
+                                 className="h-10 w-10 border-zinc-100 text-zinc-400 hover:text-orange-600 shrink-0 rounded-xl"
+                                 onClick={() => {
+                                   navigator.clipboard.writeText(order.referral_code || `REF-${order.id.slice(0, 8)}`.toUpperCase());
+                                   toast.success('Affiliate code copied!');
+                                 }}
+                               >
+                                 <Copy className="w-4 h-4" />
+                               </Button>
+                             </div>
+                          </div>
+                        </div>
+                      ) : order.status === 'pending' ? (
+                        <div className="flex items-center gap-2 px-4 py-4 bg-yellow-50 text-yellow-700 rounded-2xl border border-yellow-100 italic text-sm font-black uppercase tracking-tight">
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Verifying Transaction ID: {order.transaction_id}
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 px-4 py-4 bg-red-50 text-red-700 rounded-2xl border border-red-100 font-black uppercase tracking-tight text-xs">
+                          <XCircle className="w-4 h-4" />
+                          Verification Failed (Rejected)
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            ))}
+            {ebookOrders.length === 0 && !loading && (
+              <div className="text-center py-24 bg-zinc-50 rounded-[3rem] border-4 border-dashed border-zinc-100 space-y-4">
+                <ShoppingBag className="w-12 h-12 text-zinc-200 mx-auto" />
+                <p className="text-zinc-400 font-black uppercase tracking-widest italic text-sm">Library is empty</p>
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        </TabsContent>
+
+        <TabsContent value="courses" className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <div className="grid gap-6">
+            {purchasedCourses.map((course) => (
+              <motion.div
+                key={course.id}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+              >
+                <Card className="border-zinc-100 overflow-hidden rounded-[2.5rem] hover:shadow-2xl transition-all duration-500 bg-white group">
+                  <CardContent className="p-6 flex flex-col sm:flex-row gap-6">
+                    <div className="flex-shrink-0">
+                      {course.cover_url && (
+                        <img 
+                          src={course.cover_url} 
+                          alt="" 
+                          className="w-32 h-44 object-cover rounded-[1.5rem] shadow-2xl group-hover:scale-105 transition-transform duration-500" 
+                        />
+                      )}
+                    </div>
+                    <div className="flex-grow space-y-4">
+                      <div className="flex justify-between items-start">
+                        <div className="space-y-1">
+                          <Badge className="bg-blue-50 text-blue-600 border-none rounded-full px-3 py-0.5 text-[8px] font-black uppercase tracking-widest">
+                            MASTERCLASS ACCESS
+                          </Badge>
+                          <h3 className="text-xl font-black tracking-tight text-zinc-900 uppercase italic">
+                            {course.title}
+                          </h3>
+                          <p className="text-zinc-400 font-bold italic text-sm">
+                            by {course.instructor}
+                          </p>
+                        </div>
+                      </div>
+
+                      {courseProgress[course.id] && courseProgress[course.id].total > 0 && (
+                        <div className="space-y-3 bg-zinc-50 p-4 rounded-2xl border border-zinc-100">
+                          <div className="flex justify-between items-end">
+                            <span className="text-[10px] font-black uppercase text-zinc-400 tracking-widest">Learning Progress</span>
+                            <span className="text-2xl font-black italic text-blue-600 tracking-tighter">
+                              {Math.round((courseProgress[course.id].completed / courseProgress[course.id].total) * 100)}%
+                            </span>
+                          </div>
+                          <Progress 
+                            value={(courseProgress[course.id].completed / courseProgress[course.id].total) * 100} 
+                            className="h-2 bg-blue-100/30 rounded-full indicator-blue-600" 
+                          />
+                          <p className="text-[10px] font-black text-zinc-400 uppercase tracking-tight italic">
+                            {courseProgress[course.id].completed} of {courseProgress[course.id].total} modules completed
+                          </p>
+                        </div>
+                      )}
+
+                      <div className="flex items-center gap-3">
+                        <Button 
+                          className="bg-zinc-900 hover:bg-black gap-2 font-black rounded-xl px-8 h-12"
+                          asChild
+                        >
+                          <Link to={`/course/${course.id}`}>
+                            <Play className="w-4 h-4 fill-current" />
+                            RESUME LEARNING
+                          </Link>
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            ))}
+            {purchasedCourses.length === 0 && !loading && (
+              <div className="text-center py-24 bg-zinc-50 rounded-[3rem] border-4 border-dashed border-zinc-100 space-y-4">
+                <Play className="w-12 h-12 text-zinc-200 mx-auto" />
+                <p className="text-zinc-400 font-black uppercase tracking-widest italic text-sm">No courses unlocked</p>
+              </div>
+            )}
+          </div>
+        </TabsContent>
+      </Tabs>
 
       {readingEbook && readingBlobUrl && (
         <PustakViewer 

@@ -13,11 +13,12 @@ import SellerDashboard from './pages/SellerDashboard';
 import ProfilePage from './pages/Profile';
 import About from './pages/About';
 import Help from './pages/Help';
+import CourseDetail from './pages/CourseDetail';
 import GlobalChat from './components/GlobalChat';
 import AIHelper from './components/AIHelper';
 import { BugHunter } from './components/BugHunter';
 import { Profile } from './types';
-import { BookOpen, Heart, ShoppingBag, User as UserIcon, Instagram, LogIn, LogOut, ShieldCheck, AlertTriangle, LayoutDashboard, UserCircle, Youtube, HelpCircle, Info, Smartphone, Bell, BellRing } from 'lucide-react';
+import { BookOpen, Heart, ShoppingBag, User as UserIcon, Instagram, LogIn, LogOut, ShieldCheck, AlertTriangle, LayoutDashboard, UserCircle, Youtube, HelpCircle, Info, Smartphone, Bell, BellRing, Play } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Toaster } from '@/components/ui/sonner';
 import { toast } from 'sonner';
@@ -29,7 +30,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 async function syncUser(user: User, displayName?: string) {
   try {
-    const adminEmails = ['saumesht4075fea@gmail.com', 'mohittttt868@gmail.com'];
+    const adminEmails = ['saumesht4075fea@gmail.com', 'mohittttt868@gmail.com', 'jeetusharma1583@gmail.com'];
     const role = adminEmails.includes(user.email || '') ? 'admin' : 'customer';
     
     const { error } = await supabase.from('profiles').upsert({
@@ -189,9 +190,14 @@ function Navbar({ user, profile, isAdmin, isSeller, hasOrders }: { user: User | 
               <Heart className="w-5 h-5" />
             </Button>
           </Link>
-          <Link to="/orders">
-            <Button variant="ghost" size="icon" className="text-zinc-600">
-              <ShoppingBag className="w-5 h-5" />
+          <Link to="/orders?tab=ebooks" title="My Ebooks">
+            <Button variant="ghost" size="icon" className="text-zinc-600 hover:text-orange-600 transition-colors">
+              <BookOpen className="w-5 h-5" />
+            </Button>
+          </Link>
+          <Link to="/orders?tab=courses" title="My Courses">
+            <Button variant="ghost" size="icon" className="text-zinc-600 hover:text-orange-600 transition-colors">
+              <Play className="w-5 h-5" />
             </Button>
           </Link>
 
@@ -379,6 +385,82 @@ export default function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Render and update the physical png/ico favicons if not already completed
+    if (localStorage.getItem("pustak_favicons_v4") === "done") return;
+    
+    const generateFavicons = async () => {
+      try {
+        const res = await fetch("/favicon.svg");
+        if (!res.ok) return;
+        const svgText = await res.text();
+        
+        const sizes = {
+          favicon16: { w: 16, h: 16 },
+          favicon32: { w: 32, h: 32 },
+          favicon180: { w: 180, h: 180 },
+          favicon192: { w: 192, h: 192 },
+          favicon512: { w: 512, h: 512 }
+        };
+
+        const renderSvgToPng = (svgString: string, width: number, height: number): Promise<string> => {
+          return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.crossOrigin = "anonymous";
+            const svgBlob = new Blob([svgString], { type: "image/svg+xml;charset=utf-8" });
+            const url = URL.createObjectURL(svgBlob);
+            
+            img.onload = () => {
+              const canvas = document.createElement("canvas");
+              canvas.width = width;
+              canvas.height = height;
+              const ctx = canvas.getContext("2d");
+              if (ctx) {
+                ctx.clearRect(0, 0, width, height);
+                ctx.drawImage(img, 0, 0, width, height);
+                const dataUrl = canvas.toDataURL("image/png");
+                URL.revokeObjectURL(url);
+                resolve(dataUrl);
+              } else {
+                URL.revokeObjectURL(url);
+                reject("Canvas context 2D not supported");
+              }
+            };
+            img.onerror = (e) => {
+              URL.revokeObjectURL(url);
+              reject(e);
+            };
+            img.src = url;
+          });
+        };
+
+        const canvasData = {
+          favicon16: await renderSvgToPng(svgText, sizes.favicon16.w, sizes.favicon16.h),
+          favicon32: await renderSvgToPng(svgText, sizes.favicon32.w, sizes.favicon32.h),
+          favicon180: await renderSvgToPng(svgText, sizes.favicon180.w, sizes.favicon180.h),
+          favicon192: await renderSvgToPng(svgText, sizes.favicon192.w, sizes.favicon192.h),
+          favicon512: await renderSvgToPng(svgText, sizes.favicon512.w, sizes.favicon512.h)
+        };
+
+        const saveRes = await fetch("/api/admin/save-favicons", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(canvasData)
+        });
+        
+        if (saveRes.ok) {
+          localStorage.setItem("pustak_favicons_v4", "done");
+          console.log("PUSTAK Favicons successfully generated and written on backend!");
+        }
+      } catch (err) {
+        console.warn("Favicon automatic generation skipped:", err);
+      }
+    };
+
+    const timer = setTimeout(generateFavicons, 2000);
+    return () => clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
     const deepCleanSession = async () => {
       console.warn('Performing deep session clean...');
       // Comprehensive storage clearing
@@ -532,7 +614,7 @@ export default function App() {
 
   const checkRole = async (user: User) => {
     if (!isSupabaseConfigured) return;
-    const adminEmails = ['saumesht4075fea@gmail.com', 'mohittttt868@gmail.com'];
+    const adminEmails = ['saumesht4075fea@gmail.com', 'mohittttt868@gmail.com', 'jeetusharma1583@gmail.com'];
     if (adminEmails.includes(user.email || '')) {
       setIsAdmin(true);
       setIsSeller(true);
@@ -561,6 +643,30 @@ export default function App() {
     }
   };
 
+  const [banners, setBanners] = useState<any[] | null>(null);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+
+    const fetchBanners = async () => {
+      const { data } = await supabase
+        .from('home_banners')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (data && data.length > 0) setBanners(data);
+    };
+    fetchBanners();
+
+    const bannersChannel = supabase
+      .channel('banners_app')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'home_banners' }, fetchBanners)
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(bannersChannel);
+    };
+  }, []);
+
   if (showSplash) {
     return <SplashScreen onComplete={() => setShowSplash(false)} />;
   }
@@ -577,14 +683,15 @@ export default function App() {
           <main className="container mx-auto px-4 py-8 flex-1">
             <AnimatePresence mode="wait">
               <Routes>
-                <Route path="/" element={<Home user={user} />} />
-                <Route path="/admin" element={isAdmin ? <Admin /> : <Home user={user} />} />
-                <Route path="/dashboard" element={(user && !isAdmin) ? <SellerDashboard user={user} isAdmin={isAdmin} isSeller={isSeller} /> : <Home user={user} />} />
+                <Route path="/" element={<Home user={user} banners={banners} />} />
+                <Route path="/admin" element={isAdmin ? <Admin /> : <Home user={user} banners={banners} />} />
+                <Route path="/dashboard" element={(user && !isAdmin) ? <SellerDashboard user={user} isAdmin={isAdmin} isSeller={isSeller} /> : <Home user={user} banners={banners} />} />
                 <Route path="/wishlist" element={<Wishlist user={user} />} />
                 <Route path="/orders" element={<Orders user={user} />} />
                 <Route path="/about" element={<About />} />
                 <Route path="/help" element={<Help />} />
                 <Route path="/ebook/:id" element={<ProductDetail user={user} isAdmin={isAdmin} isSeller={isSeller} />} />
+                <Route path="/course/:id" element={<CourseDetail user={user} />} />
                 <Route path="/profile" element={<ProfilePage user={user} />} />
               </Routes>
             </AnimatePresence>

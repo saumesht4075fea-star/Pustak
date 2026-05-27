@@ -38,7 +38,15 @@ const PustakViewer: React.FC<PustakViewerProps> = ({ file, title, author, coverU
     cur: 1,
     zoomF: 1.0,
     W: 0,
-    H: 0
+    H: 0,
+    initialPinchDist: 0,
+    initialZoom: 1.0,
+    lastTouchX: 0,
+    lastTouchY: 0,
+    isPinching: false,
+    offsetX: 0,
+    offsetY: 0,
+    isPanning: false
   });
 
   const barsTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -70,11 +78,11 @@ const PustakViewer: React.FC<PustakViewerProps> = ({ file, title, author, coverU
   }, []);
 
   const getPageRect = useCallback(() => {
-    const { W, H, bScale, zoomF, pW, pH } = stateRef.current;
+    const { W, H, bScale, zoomF, pW, pH, offsetX, offsetY } = stateRef.current;
     const s = bScale * zoomF;
     const pw = pW * s;
     const ph = pH * s;
-    return { x: (W - pw) / 2, y: (H - ph) / 2, w: pw, h: ph };
+    return { x: (W - pw) / 2 + offsetX, y: (H - ph) / 2 + offsetY, w: pw, h: ph };
   }, []);
 
   const drawPage = useCallback((ctx: CanvasRenderingContext2D, oc: OffscreenCanvas, x: number, y: number, w: number, h: number) => {
@@ -221,32 +229,32 @@ const PustakViewer: React.FC<PustakViewerProps> = ({ file, title, author, coverU
         const localT = (sx - foldPos) / (PW - foldPos + 0.001);
         
         // 3D Bending logic - exponentially more bending for "Google Play" feel
-        const bend = Math.pow(Math.sin(Math.PI * localT * 0.5), 2.2);
-        const shift = t * 0.98 * bend;
+        const bend = Math.pow(Math.sin(Math.PI * localT * 0.5), 2.5);
+        const shift = t * 0.99 * bend;
         destX = PX + foldPos + (sx - foldPos) * (1 - shift);
         
         // Perspective & Lift - increased for "bending from middle" feel
-        const lift = Math.sin(Math.PI * localT) * (PW * 0.18) * Math.sin(Math.PI * t);
+        const lift = Math.sin(Math.PI * localT) * (PW * 0.22) * Math.sin(Math.PI * t);
         destY = PY - lift;
-        destH = PH + (lift * 0.6); // Perspective expansion
+        destH = PH + (lift * 0.7); // Perspective expansion
         
-        brightness = 0.5 + 0.5 * Math.sin(Math.PI * localT);
+        brightness = 0.45 + 0.55 * Math.sin(Math.PI * localT);
         alpha = localT < 0.02 ? localT / 0.02 : 1;
       } else {
         if (sx > foldPos) continue;
         draw = true;
         const localT = (foldPos - sx) / (foldPos + 0.001);
         
-        const bend = Math.pow(Math.sin(Math.PI * localT * 0.5), 2.2);
-        const shift = (1 - t) * 0.98 * bend;
+        const bend = Math.pow(Math.sin(Math.PI * localT * 0.5), 2.5);
+        const shift = (1 - t) * 0.99 * bend;
         destX = PX + foldPos - (foldPos - sx) * (1 - shift);
         
         // Perspective & Lift - increased for "bending from middle" feel
-        const lift = Math.sin(Math.PI * localT) * (PW * 0.18) * Math.sin(Math.PI * (1 - t));
+        const lift = Math.sin(Math.PI * localT) * (PW * 0.22) * Math.sin(Math.PI * (1 - t));
         destY = PY - lift;
-        destH = PH + (lift * 0.6);
+        destH = PH + (lift * 0.7);
         
-        brightness = 0.5 + 0.5 * Math.sin(Math.PI * localT);
+        brightness = 0.45 + 0.55 * Math.sin(Math.PI * localT);
         alpha = localT < 0.02 ? localT / 0.02 : 1;
       }
 
@@ -406,7 +414,7 @@ const PustakViewer: React.FC<PustakViewerProps> = ({ file, title, author, coverU
   }, [resizeCanvas, drawStatic]);
 
   const handleZoom = (d: number) => {
-    const newZoom = Math.max(0.4, Math.min(3, stateRef.current.zoomF + d));
+    const newZoom = Math.max(0.4, Math.min(5, stateRef.current.zoomF + d));
     stateRef.current.zoomF = newZoom;
     setZoomF(newZoom);
     stateRef.current.cache.clear();
@@ -415,6 +423,66 @@ const PustakViewer: React.FC<PustakViewerProps> = ({ file, title, author, coverU
       drawStatic(stateRef.current.cur);
       precache(stateRef.current.cur);
     })();
+  };
+
+  const onTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length === 2) {
+      stateRef.current.isPinching = true;
+      stateRef.current.isPanning = false;
+      const dx = e.touches[0].pageX - e.touches[1].pageX;
+      const dy = e.touches[0].pageY - e.touches[1].pageY;
+      stateRef.current.initialPinchDist = Math.sqrt(dx * dx + dy * dy);
+      stateRef.current.initialZoom = stateRef.current.zoomF;
+    } else if (e.touches.length === 1) {
+      stateRef.current.lastTouchX = e.touches[0].pageX;
+      stateRef.current.lastTouchY = e.touches[0].pageY;
+      if (stateRef.current.zoomF > 1.05) {
+        stateRef.current.isPanning = true;
+      }
+    }
+  };
+
+  const onTouchMove = (e: React.TouchEvent) => {
+    if (e.touches.length === 2 && stateRef.current.isPinching) {
+      const dx = e.touches[0].pageX - e.touches[1].pageX;
+      const dy = e.touches[0].pageY - e.touches[1].pageY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const ratio = dist / (stateRef.current.initialPinchDist || 1);
+      const newZoom = Math.max(0.4, Math.min(5, stateRef.current.initialZoom * ratio));
+      
+      if (Math.abs(newZoom - stateRef.current.zoomF) > 0.05) {
+        stateRef.current.zoomF = newZoom;
+        setZoomF(newZoom);
+        
+        // Reset offsets if zooming out
+        if (newZoom <= 1.05) {
+          stateRef.current.offsetX = 0;
+          stateRef.current.offsetY = 0;
+        }
+
+        stateRef.current.cache.clear();
+        (async () => {
+          await ensurePage(stateRef.current.cur);
+          drawStatic(stateRef.current.cur);
+        })();
+      }
+    } else if (e.touches.length === 1 && stateRef.current.isPanning) {
+      const dx = e.touches[0].pageX - stateRef.current.lastTouchX;
+      const dy = e.touches[0].pageY - stateRef.current.lastTouchY;
+      
+      stateRef.current.offsetX += dx;
+      stateRef.current.offsetY += dy;
+      stateRef.current.lastTouchX = e.touches[0].pageX;
+      stateRef.current.lastTouchY = e.touches[0].pageY;
+      
+      drawStatic(stateRef.current.cur);
+    }
+  };
+
+  const onTouchEnd = () => {
+    stateRef.current.isPinching = false;
+    stateRef.current.isPanning = false;
+    stateRef.current.initialPinchDist = 0;
   };
 
   return (
@@ -481,7 +549,11 @@ const PustakViewer: React.FC<PustakViewerProps> = ({ file, title, author, coverU
       <canvas 
         ref={canvasRef} 
         id="cv" 
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
         onClick={(e) => {
+          if (stateRef.current.isPinching) return;
           const zone = e.clientX / stateRef.current.W;
           if (zone < 0.25) changePage('prev');
           else if (zone > 0.75) changePage('next');
@@ -489,6 +561,14 @@ const PustakViewer: React.FC<PustakViewerProps> = ({ file, title, author, coverU
         }}
         className="cursor-pointer"
       />
+
+      {/* Progress Seeker / Scrollbar */}
+      <div className={`absolute bottom-16 left-0 right-0 h-2 bg-white/5 transition-opacity duration-300 ${showBars ? 'opacity-100' : 'opacity-0'}`}>
+         <div 
+           className="h-full bg-gradient-to-r from-orange-600 to-rose-600 transition-all duration-300 shadow-[0_0_15px_rgba(234,88,12,0.4)]"
+           style={{ width: `${(curPage / nPages) * 100}%` }}
+         />
+      </div>
 
       {/* Progress Footer Bar */}
       <div className={`absolute bottom-0 left-0 right-0 h-16 bg-black/40 backdrop-blur-xl border-t border-white/5 z-50 flex items-center gap-6 px-6 transition-opacity duration-500 ${showBars ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>

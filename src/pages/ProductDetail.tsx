@@ -2,16 +2,18 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { User } from '@supabase/supabase-js';
-import { Ebook, Review, Profile } from '../types';
+import { Ebook, Review, Profile, Course, CourseVideo, UserCourseProgress } from '../types';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { Star, MessageSquare, Heart, ArrowLeft, ShoppingBag, ShieldCheck, Plus, Share2, Copy, Check, ArrowRight, Loader2, TrendingUp, BadgeCheck, BookOpen } from 'lucide-react';
+import { Star, MessageSquare, Heart, ArrowLeft, ShoppingBag, ShieldCheck, Plus, Share2, Copy, Check, ArrowRight, Loader2, TrendingUp, BadgeCheck, BookOpen, Lock, Play } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import CoursePlayer from '../components/CoursePlayer';
+import { Progress } from '@/components/ui/progress';
 
 export default function ProductDetail({ user, isAdmin, isSeller }: { user: User | null; isAdmin: boolean; isSeller: boolean }) {
   const { id } = useParams();
@@ -30,6 +32,10 @@ export default function ProductDetail({ user, isAdmin, isSeller }: { user: User 
   const [hasAnyOrders, setHasAnyOrders] = useState(false);
   const [checkingPurchase, setCheckingPurchase] = useState(true);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [associatedCourse, setAssociatedCourse] = useState<Course | null>(null);
+  const [courseVideos, setCourseVideos] = useState<CourseVideo[]>([]);
+  const [userProgress, setUserProgress] = useState<UserCourseProgress[]>([]);
+  const [selectedVideo, setSelectedVideo] = useState<CourseVideo | null>(null);
 
   const images = ebook ? [ebook.cover_url] : [];
 
@@ -141,7 +147,7 @@ export default function ProductDetail({ user, isAdmin, isSeller }: { user: User 
           .single();
         
         if (prof) {
-          const adminEmails = ['saumesht4075fea@gmail.com', 'mohittttt868@gmail.com'];
+          const adminEmails = ['saumesht4075fea@gmail.com', 'mohittttt868@gmail.com', 'jeetusharma1583@gmail.com'];
           if (adminEmails.includes(prof.email || '')) {
             setReferralCodeError('Cannot use admin referral');
             setIsVerifyingCode(false);
@@ -195,6 +201,7 @@ export default function ProductDetail({ user, isAdmin, isSeller }: { user: User 
         fetchWishlist();
         checkPurchase();
         checkTotalOrders();
+        fetchUserProgress();
 
         wishlistChannel = supabase
           .channel('wishlist_detail')
@@ -240,11 +247,64 @@ export default function ProductDetail({ user, isAdmin, isSeller }: { user: User 
     
     if (data && !data.is_deleted) {
       setEbook(data as Ebook);
+      // Fetch associated course
+      fetchCourse(data.id);
     } else {
       toast.error('Ebook not found or removed');
       navigate('/');
     }
     setLoading(false);
+  };
+
+  const fetchCourse = async (ebookId: string) => {
+    const { data: courseData } = await supabase
+      .from('courses')
+      .select('*')
+      .eq('ebook_id', ebookId)
+      .maybeSingle();
+
+    if (courseData) {
+      setAssociatedCourse(courseData as Course);
+      const { data: videoData } = await supabase
+        .from('course_videos')
+        .select('*')
+        .eq('course_id', courseData.id)
+        .order('order_index', { ascending: true });
+      
+      if (videoData) {
+        setCourseVideos(videoData as CourseVideo[]);
+        // Auto select first preview video if not purchased, or first video if purchased
+        const firstPreview = videoData.find((v: CourseVideo) => v.is_preview);
+        if (firstPreview) setSelectedVideo(firstPreview);
+        else if (videoData.length > 0) setSelectedVideo(videoData[0]);
+      }
+    }
+  };
+
+  const fetchUserProgress = async () => {
+    if (!user || !associatedCourse) return;
+    const { data } = await supabase
+      .from('course_video_progress')
+      .select('*')
+      .eq('user_id', user.id)
+      .eq('course_id', associatedCourse.id);
+    if (data) setUserProgress(data as UserCourseProgress[]);
+  };
+
+  const updateProgress = async (videoId: string, isCompleted: boolean = true) => {
+    if (!user || !associatedCourse) return;
+    
+    const { error } = await supabase
+      .from('course_video_progress')
+      .upsert({
+        user_id: user.id,
+        course_id: associatedCourse.id,
+        video_id: videoId,
+        is_completed: isCompleted,
+        last_watched_at: new Date().toISOString()
+      }, { onConflict: 'user_id, video_id' });
+
+    if (!error) fetchUserProgress();
   };
 
   const fetchReviews = async () => {
@@ -384,7 +444,7 @@ export default function ProductDetail({ user, isAdmin, isSeller }: { user: User 
     
     // 1. Ensure current user has a profile first (prevents user_id FK violation)
     try {
-      const adminEmails = ['saumesht4075fea@gmail.com', 'mohittttt868@gmail.com'];
+      const adminEmails = ['saumesht4075fea@gmail.com', 'mohittttt868@gmail.com', 'jeetusharma1583@gmail.com'];
       const role = adminEmails.includes(user.email || '') ? 'admin' : 'customer';
       
       await supabase.from('profiles').upsert({
@@ -417,7 +477,7 @@ export default function ProductDetail({ user, isAdmin, isSeller }: { user: User 
             .eq('uid', finalReferrerId)
             .maybeSingle(); 
           
-          const adminEmails = ['saumesht4075fea@gmail.com', 'mohittttt868@gmail.com'];
+          const adminEmails = ['saumesht4075fea@gmail.com', 'mohittttt868@gmail.com', 'jeetusharma1583@gmail.com'];
           if (error || !data || adminEmails.includes(data.email || '')) {
             console.warn('Referrer profile not found or is an admin, resetting to null:', finalReferrerId);
             finalReferrerId = null;
@@ -630,14 +690,29 @@ export default function ProductDetail({ user, isAdmin, isSeller }: { user: User 
               <p className="text-3xl font-black">₹{ebook.price}</p>
             </div>
             {hasPurchased ? (
-              <Button 
-                size="lg"
-                className="flex-1 bg-green-600 hover:bg-green-700 text-white h-14 text-lg font-bold rounded-2xl gap-2 cursor-default"
-                onClick={() => navigate('/orders')}
-              >
-                <Check className="w-5 h-5" />
-                Already Owned
-              </Button>
+              <div className="flex flex-1 gap-2">
+                <Button 
+                  size="lg"
+                  className="flex-1 bg-green-600 hover:bg-green-700 text-white h-14 text-lg font-bold rounded-2xl gap-2 h-14"
+                  disabled
+                >
+                  <Check className="w-5 h-5" />
+                  Owned
+                </Button>
+                {associatedCourse && (
+                  <Button 
+                    size="lg"
+                    className="flex-1 bg-orange-600 hover:bg-orange-700 text-white h-14 text-lg font-bold rounded-2xl gap-2"
+                    onClick={() => {
+                      const courseSection = document.getElementById('course-section');
+                      courseSection?.scrollIntoView({ behavior: 'smooth' });
+                    }}
+                  >
+                    <Play className="w-5 h-5 fill-current" />
+                    Watch Course
+                  </Button>
+                )}
+              </div>
             ) : user?.id === ebook.seller_id ? (
               <Button 
                 size="lg"
@@ -665,7 +740,7 @@ export default function ProductDetail({ user, isAdmin, isSeller }: { user: User 
               </div>
               <div>
                 <p className="text-xs text-zinc-500 font-medium">Secure Payment</p>
-                <p className="text-sm font-bold">Cosmofeed</p>
+                <p className="text-sm font-bold">UPI/QR</p>
               </div>
             </div>
             <div className="p-4 bg-zinc-50 rounded-2xl border border-zinc-100 flex items-center gap-3">
@@ -674,12 +749,163 @@ export default function ProductDetail({ user, isAdmin, isSeller }: { user: User 
               </div>
               <div>
                 <p className="text-xs text-zinc-500 font-medium">Format</p>
-                <p className="text-sm font-bold">PDF/EPUB</p>
+                <p className="text-sm font-bold">PDF + Video Course</p>
               </div>
             </div>
           </div>
         </motion.div>
       </div>
+
+      {/* Course Section */}
+      {associatedCourse && (
+        <motion.div 
+          id="course-section"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mt-20 space-y-10"
+        >
+          <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+            <div className="space-y-4">
+              <Badge className="bg-orange-600 text-white border-none px-4 py-1">MASTERCLASS COURSE</Badge>
+              <h2 className="text-3xl md:text-4xl font-black text-zinc-900 tracking-tight">
+                {associatedCourse.title}
+              </h2>
+              <p className="text-zinc-500 max-w-2xl font-medium">
+                {associatedCourse.description}
+              </p>
+            </div>
+            
+            {hasPurchased && (
+              <div className="bg-zinc-50 p-6 rounded-3xl border border-zinc-100 min-w-[240px]">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-xs font-black uppercase text-zinc-400">Course Progress</span>
+                  <span className="text-sm font-black text-orange-600">
+                    {Math.round((userProgress.filter(p => p.is_completed).length / courseVideos.length) * 100 || 0)}%
+                  </span>
+                </div>
+                <Progress value={(userProgress.filter(p => p.is_completed).length / courseVideos.length) * 100 || 0} className="h-2 bg-zinc-200" />
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
+            {/* Video Player */}
+            <div className="lg:col-span-2 space-y-6">
+              {selectedVideo ? (
+                <div className="space-y-6">
+                  {(!selectedVideo.is_preview && !hasPurchased) ? (
+                    <div className="aspect-video bg-zinc-900 rounded-[2.5rem] flex flex-col items-center justify-center text-white p-8 text-center border-4 border-zinc-100 shadow-2xl relative overflow-hidden group">
+                      <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/dark-matter.png')] opacity-20" />
+                      <div className="relative z-10 space-y-6">
+                        <div className="w-20 h-20 bg-orange-600/20 rounded-full flex items-center justify-center mx-auto border border-orange-500/30">
+                          <Lock className="w-10 h-10 text-orange-500" />
+                        </div>
+                        <div className="space-y-2">
+                           <h3 className="text-2xl font-black italic tracking-tighter">PREMIUM LESSON LOCKED</h3>
+                           <p className="text-zinc-400 text-sm max-w-sm mx-auto font-medium">
+                             This masterclass content is exclusive to owners of "{ebook.title}". Purchase now to unlock the full course.
+                           </p>
+                        </div>
+                        <Button 
+                          onClick={() => handlePurchase(ebook)}
+                          className="bg-orange-600 hover:bg-orange-700 text-white rounded-2xl h-12 px-8 font-black shadow-xl shadow-orange-600/20"
+                        >
+                          Unlock Course Now
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="rounded-[2.5rem] overflow-hidden shadow-2xl border-4 border-zinc-100">
+                      <CoursePlayer 
+                        playbackId={selectedVideo.mux_playback_id} 
+                        title={selectedVideo.title}
+                        onEnded={() => updateProgress(selectedVideo.id)}
+                      />
+                    </div>
+                  )}
+                  
+                  <div className="p-8 bg-white rounded-[2.5rem] border border-zinc-100 shadow-sm space-y-2">
+                    <h3 className="text-2xl font-black text-zinc-900 tracking-tight">{selectedVideo.title}</h3>
+                    <p className="text-zinc-500 leading-relaxed font-medium">
+                      {selectedVideo.description || "In this lesson, you will master the core foundations of this topic through practical step-by-step guidance."}
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="aspect-video bg-zinc-50 rounded-[2.5rem] border-4 border-dashed border-zinc-200 flex items-center justify-center text-zinc-400 font-bold uppercase italic tracking-widest">
+                  Select a lesson to begin
+                </div>
+              )}
+            </div>
+
+            {/* Syllabus */}
+            <div className="space-y-6">
+              <div className="bg-zinc-900 rounded-[2.5rem] p-8 text-white shadow-xl">
+                <h4 className="text-sm font-black uppercase tracking-[0.2em] text-zinc-500 mb-6 flex items-center gap-2">
+                  <Play className="w-3 h-3 fill-orange-500 text-orange-500" />
+                  Course Syllabus
+                </h4>
+                <div className="space-y-3">
+                  {courseVideos.map((video, idx) => {
+                    const isCompleted = userProgress.find(p => p.video_id === video.id)?.is_completed;
+                    const isLocked = !video.is_preview && !hasPurchased;
+                    
+                    return (
+                      <button
+                        key={video.id}
+                        onClick={() => setSelectedVideo(video)}
+                        className={`w-full text-left p-4 rounded-2xl flex items-center gap-4 transition-all group ${
+                          selectedVideo?.id === video.id 
+                            ? 'bg-orange-600 text-white shadow-lg shadow-orange-600/20' 
+                            : 'bg-zinc-800/50 hover:bg-zinc-800 text-zinc-400 hover:text-white border border-zinc-700/50'
+                        }`}
+                      >
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-xs shrink-0 ${
+                          selectedVideo?.id === video.id ? 'bg-white/20' : 'bg-zinc-900'
+                        }`}>
+                          {isCompleted ? <Check className="w-5 h-5 text-green-400" /> : idx + 1}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-sm font-black truncate tracking-tight uppercase italic ${
+                            selectedVideo?.id === video.id ? 'text-white' : 'text-zinc-200'
+                          }`}>
+                            {video.title}
+                          </p>
+                          <div className="flex items-center gap-2 mt-1">
+                             {video.is_preview && (
+                                <Badge className="bg-green-500/20 text-green-400 hover:bg-green-500/30 border-none text-[8px] px-1.5 h-4 font-black">PREVIEW</Badge>
+                             )}
+                             {isLocked && <Lock className="w-3 h-3 text-zinc-600" />}
+                             <span className="text-[9px] font-bold text-zinc-500 group-hover:text-zinc-400 tracking-tighter">
+                               Lesson {idx + 1} • {video.duration || '10:00'}
+                             </span>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              
+              {!hasPurchased && (
+                <div className="p-8 bg-orange-50 rounded-[2.5rem] border-2 border-orange-100 space-y-4">
+                  <h5 className="font-black text-orange-900 italic uppercase tracking-tighter">Full Course Access</h5>
+                  <p className="text-sm text-orange-700 font-medium leading-tight">
+                    Get lifetime access to all lessons, quizzes, and the final certification by purchasing this ebook.
+                  </p>
+                  <Button 
+                    variant="outline" 
+                    className="w-full border-orange-200 text-orange-600 hover:bg-orange-100 font-black rounded-xl"
+                    onClick={() => handlePurchase(ebook)}
+                  >
+                    Enroll Now
+                  </Button>
+                </div>
+              )}
+            </div>
+          </div>
+        </motion.div>
+      )}
 
       {/* Reviews Section */}
       <div className="mt-20 space-y-8">

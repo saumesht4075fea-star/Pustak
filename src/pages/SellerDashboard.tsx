@@ -95,49 +95,77 @@ export default function SellerDashboard({ user, isAdmin, isSeller }: { user: Use
 
     fetchReviews();
 
+    const { data: coursesData } = await supabase.from('courses').select('*');
+    const { data: ebooksData } = await supabase.from('ebooks').select('*');
+
     // Fetch Affiliate Sales (Success & Pending) - Sales REFERRED by this user
     const { data: affiliateData } = await supabase
       .from('orders')
-      .select('*, ebook:ebooks(id, title, author, commission_amount, cover_url, seller_id)')
+      .select('*')
       .eq('referrer_id', user.id)
       .in('status', ['success', 'pending'])
       .order('created_at', { ascending: false });
     
     if (affiliateData && allProfiles) {
-      const enriched = affiliateData.map(o => ({
-        ...o,
-        buyer: allProfiles.find(p => p.uid === o.user_id)
-      }));
+      const enriched = affiliateData.map(o => {
+        const ebook = ebooksData?.find(e => e.id === o.ebook_id);
+        const course = coursesData?.find(c => c.id === o.ebook_id);
+        return {
+          ...o,
+          ebook: ebook || null,
+          course: course || null,
+          buyer: allProfiles.find(p => p.uid === o.user_id)
+        };
+      });
       setAffiliateSales(enriched as any);
     } else if (affiliateData) {
       setAffiliateSales(affiliateData as any);
     }
 
-    // Fetch Direct Sales - Sales of ebooks OWNED by this user
-    const { data: directData } = await supabase
+    // Fetch Direct Sales - Sales of products OWNED by this user
+    // We fetch all orders and filter by matching the seller_id of the associated product
+    const { data: allOrders } = await supabase
       .from('orders')
-      .select('*, ebook:ebooks!inner(id, title, author, description, price, commission_amount, cover_url, file_url, category, cosmofeed_url, seller_id, is_verified, is_deleted, created_at)')
-      .eq('ebook.seller_id', user.id)
+      .select('*')
       .in('status', ['success', 'pending'])
       .order('created_at', { ascending: false });
-    
-    if (directData && allProfiles) {
-      const enriched = directData.map(o => ({
-        ...o,
-        buyer: allProfiles.find(p => p.uid === o.user_id)
-      }));
-      setDirectSales(enriched as any);
-    } else if (directData) {
-      setDirectSales(directData as any);
+
+    if (allOrders && (ebooksData || coursesData)) {
+      const myProductSales = allOrders.filter(o => {
+        const ebook = ebooksData?.find(e => e.id === o.ebook_id);
+        const course = coursesData?.find(c => c.id === o.ebook_id);
+        return (ebook?.seller_id === user.id) || (course?.seller_id === user.id);
+      }).map(o => {
+        const ebook = ebooksData?.find(e => e.id === o.ebook_id);
+        const course = coursesData?.find(c => c.id === o.ebook_id);
+        return {
+          ...o,
+          ebook: ebook || null,
+          course: course || null,
+          buyer: allProfiles?.find(p => p.uid === o.user_id)
+        };
+      });
+      setDirectSales(myProductSales as any);
     }
 
     // Fetch user's own successful purchases to see codes
     const { data: ownOrders } = await supabase
       .from('orders')
-      .select('*, ebook:ebooks(id, title, author, description, price, commission_amount, cover_url, file_url, category, cosmofeed_url, seller_id, is_verified, is_deleted, created_at)').eq('user_id', user.id).eq('status', 'success');
+      .select('*')
+      .eq('user_id', user.id)
+      .eq('status', 'success');
     
     if (ownOrders) {
-      setOwnPurchases(ownOrders as any);
+      const enrichedOwn = ownOrders.map(o => {
+        const ebook = ebooksData?.find(e => e.id === o.ebook_id);
+        const course = coursesData?.find(c => c.id === o.ebook_id);
+        return {
+          ...o,
+          ebook: ebook || null,
+          course: course || null
+        };
+      });
+      setOwnPurchases(enrichedOwn as any);
       setHasPurchasedAny(ownOrders.length > 0);
     }
 
@@ -687,34 +715,37 @@ export default function SellerDashboard({ user, isAdmin, isSeller }: { user: Use
                 </div>
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {ownPurchases.slice(0, 3).map((order) => (
-                    <div key={order.id} className="bg-white/5 border border-white/10 rounded-2xl p-6 space-y-4 hover:bg-white/10 transition-colors">
-                      <div className="flex justify-between items-start">
-                          <div className="w-12 h-16 bg-zinc-800 rounded-md overflow-hidden shrink-0 shadow-lg">
-                           {order.ebook?.cover_url && <img src={order.ebook.cover_url} alt="" className="w-full h-full object-cover" />}
+                  {ownPurchases.slice(0, 3).map((order) => {
+                    const product = order.ebook || order.course;
+                    return (
+                      <div key={order.id} className="bg-white/5 border border-white/10 rounded-2xl p-6 space-y-4 hover:bg-white/10 transition-colors">
+                        <div className="flex justify-between items-start">
+                           <div className="w-12 h-16 bg-zinc-800 rounded-md overflow-hidden shrink-0 shadow-lg">
+                            {product?.cover_url && <img src={product.cover_url} alt="" className="w-full h-full object-cover" />}
+                          </div>
+                          <Badge className="bg-green-500 text-white border-none text-[10px] font-black italic">
+                            ₹{order.commission_amount || product?.commission_amount || 0}
+                          </Badge>
                         </div>
-                        <Badge className="bg-green-500 text-white border-none text-[10px] font-black italic">
-                          ₹{order.ebook?.commission_amount || 0}
-                        </Badge>
+                        <div className="space-y-1">
+                          <h4 className="font-bold text-sm truncate leading-tight">{product?.title || 'Unknown Product'}</h4>
+                          <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-black">Code: <span className="text-white">{order.referral_code || 'REF-ACTIVE'}</span></p>
+                        </div>
+                        <Button 
+                          size="sm" 
+                          className="w-full h-10 bg-white text-zinc-900 hover:bg-orange-500 hover:text-white rounded-xl font-bold text-xs gap-2"
+                          onClick={() => {
+                            const code = order.referral_code || `REF-${order.id.slice(0, 8)}`;
+                            navigator.clipboard.writeText(code);
+                            toast.success('Referral Code Copied!');
+                          }}
+                        >
+                          <Copy className="w-3 h-3" />
+                          COPY CODE
+                        </Button>
                       </div>
-                      <div className="space-y-1">
-                        <h4 className="font-bold text-sm truncate leading-tight">{order.ebook?.title}</h4>
-                        <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-black">Code: <span className="text-white">{order.referral_code || 'REF-ACTIVE'}</span></p>
-                      </div>
-                      <Button 
-                        size="sm" 
-                        className="w-full h-10 bg-white text-zinc-900 hover:bg-orange-500 hover:text-white rounded-xl font-bold text-xs gap-2"
-                        onClick={() => {
-                          const code = order.referral_code || `REF-${order.id.slice(0, 8)}`;
-                          navigator.clipboard.writeText(code);
-                          toast.success('Referral Code Copied!');
-                        }}
-                      >
-                        <Copy className="w-3 h-3" />
-                        COPY CODE
-                      </Button>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
 
                 <div className="bg-white/5 p-4 rounded-2xl border border-white/5 text-center">
