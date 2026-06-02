@@ -13,6 +13,7 @@ export interface Ebook {
   created_at: string;
   is_verified?: boolean;
   is_deleted?: boolean;
+  course_id?: string;
 }
 
 export interface Profile {
