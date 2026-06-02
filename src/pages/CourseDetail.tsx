@@ -5,7 +5,7 @@ import { User } from '@supabase/supabase-js';
 import { 
   Play, Lock, CheckCircle, ChevronRight, MessageSquare, 
   Share2, Award, Clock, Users, Star, ArrowLeft, Loader2,
-  CheckSquare, Trophy
+  CheckSquare, Trophy, BookOpen
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -30,6 +30,7 @@ export default function CourseDetail({ user }: { user: User | null }) {
   const [isVerifyingCode, setIsVerifyingCode] = useState(false);
   const [referralCodeError, setReferralCodeError] = useState('');
   const [appliedReferrerId, setAppliedReferrerId] = useState<string | null>(null);
+  const [linkedEbook, setLinkedEbook] = useState<any | null>(null);
 
   useEffect(() => {
     if (!id || !isSupabaseConfigured) return;
@@ -45,6 +46,18 @@ export default function CourseDetail({ user }: { user: User | null }) {
         if (courseError) throw courseError;
         setCourse(courseData as Course);
 
+        // Fetch companion ebook if exists
+        if (courseData.ebook_id) {
+          const { data: ebData } = await supabase
+            .from('ebooks')
+            .select('*')
+            .eq('id', courseData.ebook_id)
+            .single();
+          if (ebData) {
+            setLinkedEbook(ebData);
+          }
+        }
+
         const { data: videoData, error: videoError } = await supabase
           .from('course_videos')
           .select('*')
@@ -57,7 +70,6 @@ export default function CourseDetail({ user }: { user: User | null }) {
         // Check Access
         if (user) {
           // Check if user bought the course directly OR the linked ebook
-          let accessQuery = `user_id=eq.${user.id},status=in.(success,completed)`;
           const orFilter = courseData.ebook_id 
             ? `ebook_id.eq.${id},ebook_id.eq.${courseData.ebook_id}`
             : `ebook_id.eq.${id}`;
@@ -261,12 +273,21 @@ export default function CourseDetail({ user }: { user: User | null }) {
         </div>
         <div className="flex items-center gap-2">
            {!hasAccess && (
-             <Button 
-                onClick={handleEnroll}
-                className="bg-orange-600 hover:bg-orange-700 text-white rounded-xl font-black text-xs px-6"
-             >
-                ENROLL ₹{course.price}
-             </Button>
+             course.ebook_id ? (
+               <Button 
+                  onClick={() => navigate(`/ebook/${course.ebook_id}`)}
+                  className="bg-orange-600 hover:bg-orange-700 text-white rounded-xl font-black text-xs px-6 uppercase tracking-wider"
+               >
+                  BUY BOOK ₹{linkedEbook?.price || '...'}
+               </Button>
+             ) : (
+               <Button 
+                  onClick={handleEnroll}
+                  className="bg-orange-600 hover:bg-orange-700 text-white rounded-xl font-black text-xs px-6"
+               >
+                  ENROLL ₹{course.price}
+               </Button>
+             )
            )}
         </div>
       </div>
@@ -444,44 +465,79 @@ export default function CourseDetail({ user }: { user: User | null }) {
 
               {!hasAccess && (
                 <div className="p-6 bg-white border-t border-zinc-100 mt-2 space-y-4">
-                  {/* Referral Code Field */}
-                  <div className="space-y-2">
-                    <Label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Apply Referral Code</Label>
-                    <div className="flex gap-2">
-                      <Input 
-                        placeholder="ENTER CODE (Optional)" 
-                        className="h-12 text-sm bg-zinc-50 border-zinc-200 text-zinc-900 font-mono font-black uppercase rounded-xl"
-                        value={referralCodeInput}
-                        onChange={(e) => setReferralCodeInput(e.target.value.toUpperCase())}
-                        disabled={!!appliedReferrerId}
-                      />
-                      <Button 
-                        variant={appliedReferrerId ? "secondary" : "outline"}
-                        className="h-12 w-12 border-zinc-200 text-zinc-600 rounded-xl"
-                        onClick={() => verifyCode(referralCodeInput)}
-                        disabled={isVerifyingCode || !referralCodeInput || !!appliedReferrerId}
-                      >
-                        {isVerifyingCode ? <Loader2 className="w-4 h-4 animate-spin" /> : (appliedReferrerId ? <CheckCircle className="w-5 h-5 text-green-600" /> : <ChevronRight className="w-5 h-5" />)}
-                      </Button>
-                    </div>
-                    {referralCodeError && <p className="text-[10px] text-red-500 font-bold uppercase">{referralCodeError}</p>}
-                    {appliedReferrerId && <p className="text-[10px] text-green-600 font-bold uppercase">✓ Affiliate discount Applied</p>}
-                  </div>
+                  {course.ebook_id ? (
+                    <>
+                      <div className="space-y-2 text-center py-2">
+                        <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center mx-auto text-orange-600 mb-2">
+                          <Lock className="w-6 h-6 animate-pulse" />
+                        </div>
+                        <h4 className="text-sm font-black uppercase text-zinc-900 tracking-tight italic">Ebook Bundle Required</h4>
+                        <p className="text-zinc-500 text-xs font-medium leading-relaxed">
+                          This premium masterclass is exclusive to readers of the official companion book:
+                        </p>
+                        <p className="text-orange-600 font-extrabold uppercase text-xs italic tracking-tight line-clamp-2">
+                          "{linkedEbook?.title || 'Loading Ebook Title...'}"
+                        </p>
+                      </div>
 
-                  <div className="flex items-center justify-between mb-4">
-                     <div>
-                       <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Full Access Price</p>
-                       <p className="text-3xl font-black text-zinc-900 tracking-tighter italic">₹{course.price}</p>
-                     </div>
-                     <Badge className="bg-green-100 text-green-600 hover:bg-green-100 border-none font-black text-[10px]">SAVE 70% TODAY</Badge>
-                  </div>
-                  <Button 
-                    onClick={handleEnroll}
-                    className="w-full h-14 rounded-2xl bg-orange-600 hover:bg-orange-700 text-white font-black text-lg gap-3"
-                  >
-                    <CheckCircle className="w-6 h-6" />
-                    UNLOCK EVERYTHING
-                  </Button>
+                      <div className="flex items-center justify-between mb-4 bg-zinc-50 p-4 rounded-xl border border-zinc-100">
+                         <div>
+                           <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Ebook Price</p>
+                           <p className="text-2xl font-black text-zinc-900 tracking-tighter italic">₹{linkedEbook?.price || '...'}</p>
+                         </div>
+                         <Badge className="bg-orange-600 text-white hover:bg-orange-600 border-none font-black text-[10px]">INCLUDES RADIANT COURSE</Badge>
+                      </div>
+                      
+                      <Button 
+                        onClick={() => navigate(`/ebook/${course.ebook_id}`)}
+                        className="w-full h-14 rounded-2xl bg-orange-600 hover:bg-orange-700 text-white font-black text-lg gap-3"
+                      >
+                        <BookOpen className="w-6 h-6" />
+                        GET BOOK & UNLOCK
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      {/* Referral Code Field */}
+                      <div className="space-y-2">
+                        <Label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Apply Referral Code</Label>
+                        <div className="flex gap-2">
+                          <Input 
+                            placeholder="ENTER CODE (Optional)" 
+                            className="h-12 text-sm bg-zinc-50 border-zinc-200 text-zinc-900 font-mono font-black uppercase rounded-xl"
+                            value={referralCodeInput}
+                            onChange={(e) => setReferralCodeInput(e.target.value.toUpperCase())}
+                            disabled={!!appliedReferrerId}
+                          />
+                          <Button 
+                            variant={appliedReferrerId ? "secondary" : "outline"}
+                            className="h-12 w-12 border-zinc-200 text-zinc-600 rounded-xl"
+                            onClick={() => verifyCode(referralCodeInput)}
+                            disabled={isVerifyingCode || !referralCodeInput || !!appliedReferrerId}
+                          >
+                            {isVerifyingCode ? <Loader2 className="w-4 h-4 animate-spin" /> : (appliedReferrerId ? <CheckCircle className="w-5 h-5 text-green-600" /> : <ChevronRight className="w-5 h-5" />)}
+                          </Button>
+                        </div>
+                        {referralCodeError && <p className="text-[10px] text-red-500 font-bold uppercase">{referralCodeError}</p>}
+                        {appliedReferrerId && <p className="text-[10px] text-green-600 font-bold uppercase">✓ Affiliate discount Applied</p>}
+                      </div>
+
+                      <div className="flex items-center justify-between mb-4">
+                         <div>
+                           <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Full Access Price</p>
+                           <p className="text-3xl font-black text-zinc-900 tracking-tighter italic">₹{course.price}</p>
+                         </div>
+                         <Badge className="bg-green-100 text-green-600 hover:bg-green-100 border-none font-black text-[10px]">SAVE 70% TODAY</Badge>
+                      </div>
+                      <Button 
+                        onClick={handleEnroll}
+                        className="w-full h-14 rounded-2xl bg-orange-600 hover:bg-orange-700 text-white font-black text-lg gap-3"
+                      >
+                        <CheckCircle className="w-6 h-6" />
+                        UNLOCK EVERYTHING
+                      </Button>
+                    </>
+                  )}
                 </div>
               )}
             </CardContent>

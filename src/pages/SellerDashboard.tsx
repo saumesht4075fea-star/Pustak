@@ -253,8 +253,30 @@ export default function SellerDashboard({ user, isAdmin, isSeller }: { user: Use
     return acc;
   }, {});
 
-  const currentMonthKey = new Date().toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
-  const currentMonthTotal = monthlyRevenue[currentMonthKey]?.total || 0;
+  const now = new Date();
+  const startOfCurrentMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+  const endOfCurrentMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+
+  const currentMonthTotal = confirmedUniqueSales
+    .filter(sale => {
+      if (!sale.created_at) return false;
+      const d = new Date(sale.created_at);
+      if (isNaN(d.getTime())) return false;
+      return d >= startOfCurrentMonth && d <= endOfCurrentMonth;
+    })
+    .reduce((acc, sale) => {
+      let earnings = 0;
+      if (sale.referrer_id === user?.id) {
+        earnings += (sale.commission_amount || sale.ebook?.commission_amount || sale.course?.commission_amount || 0);
+      }
+      if (sale.ebook?.seller_id === user?.id || sale.course?.seller_id === user?.id) {
+        const commAmount = sale.commission_amount || sale.ebook?.commission_amount || sale.course?.commission_amount || 0;
+        const commission = sale.referrer_id ? commAmount : 0;
+        const adminFee = 60;
+        earnings += (sale.amount - commission - adminFee);
+      }
+      return acc + earnings;
+    }, 0);
   
   const totalAffiliateEarnings = confirmedUniqueSales
     .filter(s => s.referrer_id === user?.id)

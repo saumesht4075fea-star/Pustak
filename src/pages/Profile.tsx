@@ -37,6 +37,10 @@ export default function Profile({ user }: { user: User | null }) {
       .eq('status', 'success');
 
     if (sales) {
+      const now = new Date();
+      const startOfCurrentMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+      const endOfCurrentMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+
       const totals = sales.reduce((acc, sale) => {
         let earnings = 0;
         if (sale.referrer_id === user.id) {
@@ -49,10 +53,11 @@ export default function Profile({ user }: { user: User | null }) {
         }
 
         acc.total += earnings;
-        const d = new Date(sale.created_at);
-        const now = new Date();
-        if (d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()) {
-          acc.thisMonth += earnings;
+        if (sale.created_at) {
+          const d = new Date(sale.created_at);
+          if (!isNaN(d.getTime()) && d >= startOfCurrentMonth && d <= endOfCurrentMonth) {
+            acc.thisMonth += earnings;
+          }
         }
         return acc;
       }, { total: 0, thisMonth: 0 });
