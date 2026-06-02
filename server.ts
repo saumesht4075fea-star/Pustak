@@ -12,8 +12,20 @@ import { GoogleGenAI } from "@google/genai";
 
 dotenv.config();
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+let currentFilename = "";
+let currentDirname = "";
+try {
+  if (typeof import.meta !== "undefined" && import.meta.url) {
+    currentFilename = fileURLToPath(import.meta.url);
+    currentDirname = path.dirname(currentFilename);
+  } else {
+    currentFilename = __filename;
+    currentDirname = __dirname;
+  }
+} catch (e) {
+  currentFilename = typeof __filename !== "undefined" ? __filename : process.cwd();
+  currentDirname = typeof __dirname !== "undefined" ? __dirname : process.cwd();
+}
 
 // Lazy init Gemini
 let aiClient: any = null;
