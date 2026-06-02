@@ -41,7 +41,6 @@ export default function Home({ user, banners }: { user: User | null, banners: an
   const [currentBannerIndex, setCurrentBannerIndex] = useState(0);
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('All');
-  const [productType, setProductType] = useState<'all' | 'ebook' | 'course'>('all');
   const [wishlist, setWishlist] = useState<string[]>([]);
   const [products, setProducts] = useState<any[]>([]);
   const [reviews, setReviews] = useState<Record<string, Review[]>>({});
@@ -112,16 +111,14 @@ export default function Home({ user, banners }: { user: User | null, banners: an
             .order('created_at', { ascending: false })
         ]);
 
-        const combined = [
-          ...(ebData || []).map(e => ({ ...e, type: 'ebook' })),
-          ...(cData || [])
-            .filter(c => !c.ebook_id) // Only show stand-alone courses
-            .map(c => ({ ...c, type: 'course', author: c.instructor }))
-        ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        const combined = (ebData || []).map(e => {
+          const linkedCourse = (cData || []).find(c => c.ebook_id === e.id);
+          return { ...e, type: 'ebook', linked_course: linkedCourse };
+        }).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
         setProducts(combined);
         setEbooks(ebData || []);
-        setCourses((cData || []).filter(c => !c.ebook_id)); // Filter featured ones too
+        setCourses([]); // Hide outstanding/stand-alone courses
       } catch (err) {
         console.error('Error fetching products:', err);
       }
@@ -271,15 +268,14 @@ export default function Home({ user, banners }: { user: User | null, banners: an
 
   const filteredProducts = products.filter(p => {
     const matchesCategory = (category === 'All' || p.category === category);
-    const matchesType = (productType === 'all' || p.type === productType);
     const searchTerm = search.toLowerCase();
     
     const matchesSearch = 
       p.title.toLowerCase().includes(searchTerm) || 
-      (p.author || p.instructor || '').toLowerCase().includes(searchTerm) ||
+      (p.author || '').toLowerCase().includes(searchTerm) ||
       p.seller_id === search; 
       
-    return matchesCategory && matchesType && matchesSearch;
+    return matchesCategory && matchesSearch;
   });
 
   useEffect(() => {
@@ -408,33 +404,7 @@ export default function Home({ user, banners }: { user: User | null, banners: an
         </section>
       )}
 
-      {/* Product Type Filter */}
-      <div className="flex items-center gap-2 mb-4 p-1 bg-zinc-100 w-fit rounded-2xl">
-        <Button 
-          variant={productType === 'all' ? "default" : "ghost"}
-          size="sm"
-          onClick={() => setProductType('all')}
-          className={`rounded-xl px-6 h-10 font-black text-xs uppercase tracking-widest ${productType === 'all' ? 'bg-zinc-900 text-white shadow-lg' : 'text-zinc-500 hover:text-zinc-900'}`}
-        >
-          Explore All
-        </Button>
-        <Button 
-          variant={productType === 'course' ? "default" : "ghost"}
-          size="sm"
-          onClick={() => setProductType('course')}
-          className={`rounded-xl px-6 h-10 font-black text-xs uppercase tracking-widest ${productType === 'course' ? 'bg-zinc-900 text-white shadow-lg' : 'text-zinc-500 hover:text-zinc-900'}`}
-        >
-          Masterclasses
-        </Button>
-        <Button 
-          variant={productType === 'ebook' ? "default" : "ghost"}
-          size="sm"
-          onClick={() => setProductType('ebook')}
-          className={`rounded-xl px-6 h-10 font-black text-xs uppercase tracking-widest ${productType === 'ebook' ? 'bg-zinc-900 text-white shadow-lg' : 'text-zinc-500 hover:text-zinc-900'}`}
-        >
-          Digital Books
-        </Button>
-      </div>
+
 
       {/* Filters */}
       <div id="search-section" className="flex flex-col sm:flex-row gap-4 items-center justify-between bg-white p-2 sm:p-4 rounded-2xl border border-zinc-200 shadow-sm relative z-40">
@@ -614,7 +584,7 @@ export default function Home({ user, banners }: { user: User | null, banners: an
           >
             <Card 
               className="overflow-hidden border-zinc-200 hover:shadow-xl transition-all duration-300 rounded-[1.5rem] bg-white flex flex-col h-full cursor-pointer relative" 
-              onClick={() => navigate(product.type === 'ebook' ? `/ebook/${product.id}` : `/course/${product.id}`)}
+              onClick={() => navigate(`/ebook/${product.id}`)}
             >
               <div className="relative aspect-[3/4] overflow-hidden block">
                 {product.cover_url && (
@@ -626,25 +596,23 @@ export default function Home({ user, banners }: { user: User | null, banners: an
                   />
                 )}
                 <div className="absolute top-2 right-2 sm:top-3 sm:right-3 z-10">
-                  {product.type === 'ebook' && (
-                    <Button 
-                      variant="secondary" 
-                      size="icon" 
-                      className={`rounded-full h-8 w-8 sm:h-10 sm:w-10 shadow-lg ${wishlist.includes(product.id) ? 'text-red-500' : 'text-zinc-400'}`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        e.preventDefault();
-                        toggleWishlist(product.id);
-                      }}
-                    >
-                      <Heart className={`w-3.5 h-3.5 sm:w-5 h-5 ${wishlist.includes(product.id) ? 'fill-current' : ''}`} />
-                    </Button>
-                  )}
+                  <Button 
+                    variant="secondary" 
+                    size="icon" 
+                    className={`rounded-full h-8 w-8 sm:h-10 sm:w-10 shadow-lg ${wishlist.includes(product.id) ? 'text-red-500' : 'text-zinc-400'}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      e.preventDefault();
+                      toggleWishlist(product.id);
+                    }}
+                  >
+                    <Heart className={`w-3.5 h-3.5 sm:w-5 h-5 ${wishlist.includes(product.id) ? 'fill-current' : ''}`} />
+                  </Button>
                 </div>
                 
                 <div className="absolute bottom-2 left-2 z-10 flex flex-col gap-1">
-                   <Badge className={`${product.type === 'course' ? 'bg-zinc-900' : 'bg-orange-600'} border-none text-[8px] sm:text-[10px] text-white font-black uppercase tracking-tighter`}>
-                      {product.type === 'course' ? 'Masterclass' : 'Ebook'}
+                   <Badge className={`${product.linked_course ? 'bg-gradient-to-r from-zinc-900 to-orange-600' : 'bg-orange-600'} border-none text-[8px] sm:text-[10px] text-white font-black uppercase tracking-tighter`}>
+                      {product.linked_course ? 'Ebook + Masterclass' : 'Ebook'}
                    </Badge>
                    <Badge className="bg-black/60 backdrop-blur-md border-none text-[8px] sm:text-[9px] text-white">
                       {product.category}
@@ -671,7 +639,7 @@ export default function Home({ user, banners }: { user: User | null, banners: an
                 <div className="mt-2 pt-2 border-t border-zinc-50 flex items-center justify-between">
                    <span className="text-sm sm:text-lg font-black tracking-tighter">₹{product.price}</span>
                    <Button size="icon" className="h-7 w-7 sm:h-9 sm:w-9 bg-zinc-900 rounded-lg sm:rounded-xl">
-                      {product.type === 'course' ? <Play className="w-3.5 h-3.5 sm:w-4 h-4 text-white fill-current" /> : <ShoppingCart className="w-3.5 h-3.5 sm:w-4 h-4 text-white" />}
+                      {product.linked_course ? <Play className="w-3.5 h-3.5 sm:w-4 h-4 text-white fill-current" /> : <ShoppingCart className="w-3.5 h-3.5 sm:w-4 h-4 text-white" />}
                    </Button>
                 </div>
               </div>
