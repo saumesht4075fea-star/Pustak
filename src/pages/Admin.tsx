@@ -264,6 +264,8 @@ export default function Admin() {
   const [isUploading, setIsUploading] = useState(false);
   const [editingEbook, setEditingEbook] = useState<Ebook | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [creatingCourseForEbook, setCreatingCourseForEbook] = useState<Ebook | null>(null);
+  const [manageCourseActiveTab, setManageCourseActiveTab] = useState<'lessons' | 'settings'>('lessons');
   
   const [utrSearch, setUtrSearch] = useState('');
   const [utrClipboard, setUtrClipboard] = useState('');
@@ -500,7 +502,8 @@ export default function Admin() {
 
       const targetSellerId = newEbook.seller_id || user.id;
 
-      const { error } = await supabase
+      // 1. Insert Ebook and get the ID back
+      const { data: insertedEbook, error: ebookInsertError } = await supabase
         .from('ebooks')
         .insert({
           title: newEbook.title,
@@ -514,24 +517,42 @@ export default function Admin() {
           cosmofeed_url: newEbook.cosmofeed_url || '',
           seller_id: targetSellerId,
           created_at: new Date().toISOString()
-        });
+        })
+        .select('id')
+        .single();
       
-      if (error) throw error;
+      if (ebookInsertError) throw ebookInsertError;
+
+      // 2. Link course if selected
+      if (newEbook.course_id && newEbook.course_id !== 'none') {
+        const { error: courseUpdateError } = await supabase
+          .from('courses')
+          .update({ ebook_id: insertedEbook.id })
+          .eq('id', newEbook.course_id);
+        
+        if (courseUpdateError) throw courseUpdateError;
+      }
       
       toast.success('Ebook added successfully');
       setIsAddingProduct(false);
       setNewEbook({
         title: '', author: '', description: '', price: 0, commission_amount: 0,
-        cover_url: '', file_url: '', category: 'Fiction', cosmofeed_url: '', seller_id: ''
+        cover_url: '', file_url: '', category: 'Fiction', cosmofeed_url: '', seller_id: '',
+        course_id: ''
       });
+      fetchData();
     } catch (error: any) {
       toast.error(error.message);
     }
   };
 
   const startEdit = (ebook: Ebook) => {
+    const linked = courses.find(c => c.ebook_id === ebook.id);
     setEditingEbook(ebook);
-    setEditFormData(ebook);
+    setEditFormData({
+      ...ebook,
+      course_id: linked ? linked.id : 'none'
+    });
     setIsEditing(true);
   };
 
@@ -539,12 +560,29 @@ export default function Admin() {
     e.preventDefault();
     if (!editingEbook) return;
     try {
+      // 1. Clear previous courses pointing to this ebook
+      await supabase
+        .from('courses')
+        .update({ ebook_id: null })
+        .eq('ebook_id', editingEbook.id);
+
+      // 2. Link newly selected course if valid
+      if (editFormData.course_id && editFormData.course_id !== 'none') {
+        const { error: courseUpdateError } = await supabase
+          .from('courses')
+          .update({ ebook_id: editingEbook.id })
+          .eq('id', editFormData.course_id);
+        
+        if (courseUpdateError) throw courseUpdateError;
+      }
+
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { id, created_at, ...updateData } = editFormData as Ebook;
+      const { id, created_at, course_id, ...updateData } = editFormData as any;
       const { error } = await supabase.from('ebooks').update(updateData).eq('id', editingEbook.id);
       if (error) throw error;
       toast.success('Ebook updated successfully');
       setIsEditing(false);
+      fetchData();
     } catch (error: any) {
       toast.error(error.message);
     }
@@ -671,14 +709,49 @@ export default function Admin() {
 
   const handleSoftDeleteEbook = async () => {
     if (!deletingId) return;
+    const toastId = toast.loading('Deleting product and associated masterclass assets...');
     try {
+      // Find linked course
+      const linkedCourse = courses.find(c => c.ebook_id === deletingId);
+      if (linkedCourse) {
+        // 1. Delete intro video from Mux if exists
+        if (linkedCourse.intro_mux_asset_id) {
+          try {
+            await fetch(`/api/mux/asset/${linkedCourse.intro_mux_asset_id}`, { method: 'DELETE' });
+          } catch (e) {
+            console.error('Error deleting intro video:', e);
+          }
+        }
+
+        // 2. Get and delete all course videos from Mux
+        const { data: videos } = await supabase.from('course_videos').select('mux_asset_id').eq('course_id', linkedCourse.id);
+        if (videos) {
+          for (const video of videos) {
+            if (video.mux_asset_id) {
+              try {
+                await fetch(`/api/mux/asset/${video.mux_asset_id}`, { method: 'DELETE' });
+              } catch (e) {
+                console.error('Error deleting video lesson:', e);
+              }
+            }
+          }
+        }
+
+        // 3. Delete from Supabase courses table (cascade deletes course_videos)
+        const { error: courseDelErr } = await supabase.from('courses').delete().eq('id', linkedCourse.id);
+        if (courseDelErr) throw courseDelErr;
+      }
+
+      // Soft-delete ebook
       const { error } = await supabase.from('ebooks').update({ is_deleted: true }).eq('id', deletingId);
       if (error) throw error;
-      toast.success('Product archived. Sales data preserved.');
+
+      toast.success('Product and all associated masterclass assets deleted!', { id: toastId });
       setDeletingId(null);
+      setIsDeleting(false);
       fetchData();
     } catch (error: any) {
-       toast.error(error.message);
+       toast.error(error.message, { id: toastId });
     }
   };
 
@@ -758,7 +831,6 @@ export default function Admin() {
           <NavItem id="banners" label="Hero Banners" icon={ImageIcon} />
           <NavItem id="community" label="Community" icon={Share2} />
           <NavItem id="reviews" label="Reviews" icon={BadgeCheck} />
-          <NavItem id="courses" label="Courses" icon={BookOpen} />
           <NavItem id="reports" label="Sales Report" icon={ChartBar} />
         </div>
       </div>
@@ -1453,7 +1525,41 @@ export default function Admin() {
                         {ebook.is_deleted && <span className="text-[8px] font-black text-red-500 uppercase tracking-widest">Store Hidden</span>}
                       </div>
                       <h4 className="font-black text-sm text-zinc-900 line-clamp-1">{ebook.title}</h4>
-                      <p className="text-[10px] text-zinc-500 mb-4">Price: ₹{ebook.price}</p>
+                      <p className="text-[10px] text-zinc-500 mb-2">Price: ₹{ebook.price}</p>
+                      
+                      {/* Inline Course Action Button */}
+                      {!ebook.is_deleted && (() => {
+                        const linkedCourse = courses.find(c => c.ebook_id === ebook.id);
+                        if (linkedCourse) {
+                          return (
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              className="w-full mb-3 gap-1.5 rounded-lg border-2 border-orange-200 hover:bg-orange-50 text-orange-600 font-black text-[10px] uppercase tracking-wider"
+                              onClick={() => {
+                                setSelectedCourseForVideos(linkedCourse);
+                                setManageCourseActiveTab('lessons');
+                              }}
+                            >
+                              <Play className="w-3.5 h-3.5 fill-current animate-pulse text-orange-600" />
+                              Manage Masterclass
+                            </Button>
+                          );
+                        } else {
+                          return (
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              className="w-full mb-3 gap-1.5 rounded-lg border-2 border-dashed border-zinc-200 hover:bg-zinc-50 text-zinc-500 font-bold text-[10px] uppercase tracking-wider"
+                              onClick={() => setCreatingCourseForEbook(ebook)}
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                              Create Course
+                            </Button>
+                          );
+                        }
+                      })()}
+
                       <div className="flex gap-2">
                         <Button 
                           className={`flex-1 text-[9px] font-black h-8 rounded-lg ${ebook.is_deleted ? 'bg-zinc-200 text-zinc-400 cursor-not-allowed' : (ebook.is_verified ? 'bg-zinc-100 text-zinc-500' : 'bg-green-600 text-white')}`}
@@ -1653,7 +1759,7 @@ export default function Admin() {
                 <CardDescription className="text-zinc-400 font-bold uppercase text-[10px] tracking-widest mt-1">Manage global community conversations</CardDescription>
               </CardHeader>
               <CardContent className="p-4 sm:p-8 space-y-4">
-                 <div className="overflow-hidden border border-zinc-100 rounded-2xl">
+                 <div className="overflow-x-auto border border-zinc-100 rounded-2xl">
                     <table className="w-full text-left">
                        <thead className="bg-zinc-50 border-b border-zinc-100 text-[10px] font-black uppercase text-zinc-400 tracking-widest italic">
                           <tr>
@@ -1717,7 +1823,7 @@ export default function Admin() {
                 <CardDescription className="text-zinc-400 font-bold uppercase text-[10px] tracking-widest mt-1">Review and moderate all customer feedback</CardDescription>
               </CardHeader>
               <CardContent className="p-4 sm:p-8 space-y-4">
-                 <div className="overflow-hidden border border-zinc-100 rounded-2xl">
+                 <div className="overflow-x-auto border border-zinc-100 rounded-2xl">
                     <table className="w-full text-left">
                        <thead className="bg-zinc-50 border-b border-zinc-100 text-[10px] font-black uppercase text-zinc-400 tracking-widest italic">
                           <tr>
@@ -1770,7 +1876,436 @@ export default function Admin() {
         </div>
       )}
 
-      {activeTab === 'courses' && (
+      {/* Create Companion Course Dialog */}
+      <Dialog open={!!creatingCourseForEbook} onOpenChange={() => setCreatingCourseForEbook(null)}>
+        <DialogContent className="sm:max-w-[600px] rounded-[2.5rem] p-8 border-none shadow-2xl bg-white text-zinc-950">
+          <DialogHeader>
+            <DialogTitle className="text-2xl font-black italic tracking-tight text-zinc-900">Create Companion Masterclass</DialogTitle>
+            <DialogDescription className="font-bold text-zinc-400">Launch a seamless companion video masterclass for this ebook</DialogDescription>
+          </DialogHeader>
+          {creatingCourseForEbook && (() => {
+            if (!newCourse.title || !newCourse.ebook_id || newCourse.ebook_id !== creatingCourseForEbook.id) {
+              setNewCourse({
+                title: `Masterclass: ${creatingCourseForEbook.title}`,
+                ebook_id: creatingCourseForEbook.id,
+                category: creatingCourseForEbook.category || 'Mastery',
+                description: `Complete video masterclass course accompanying the ebook "${creatingCourseForEbook.title}".`,
+                price: 0,
+                commission_amount: 0,
+                cover_url: creatingCourseForEbook.cover_url || '',
+                file_url: '',
+                intro_mux_asset_id: ''
+              });
+            }
+            
+            const handleSubmitCourse = async (e: React.FormEvent) => {
+              e.preventDefault();
+              const toastId = toast.loading('Launching masterclass...');
+              try {
+                const { data: { user } } = await supabase.auth.getUser();
+                const coursePayload: any = {
+                  title: newCourse.title,
+                  ebook_id: creatingCourseForEbook.id,
+                  category: newCourse.category,
+                  description: newCourse.description,
+                  price: Number(newCourse.price),
+                  commission_amount: Number(newCourse.commission_amount),
+                  cover_url: newCourse.cover_url,
+                  instructor: creatingCourseForEbook.author || 'Platform Admin',
+                  seller_id: creatingCourseForEbook.seller_id || user?.id,
+                  intro_mux_playback_id: newCourse.file_url || null,
+                  intro_mux_asset_id: newCourse.intro_mux_asset_id || null
+                };
+
+                const { data: createdC, error } = await supabase
+                  .from('courses')
+                  .insert([coursePayload])
+                  .select()
+                  .single();
+
+                if (error) throw error;
+                
+                toast.success('Course created successfully!', { id: toastId });
+                setCreatingCourseForEbook(null);
+                setNewCourse({
+                  title: '',
+                  ebook_id: '',
+                  category: 'Mastery',
+                  description: '',
+                  price: 0,
+                  commission_amount: 0,
+                  cover_url: '',
+                  file_url: '',
+                  intro_mux_asset_id: ''
+                });
+                fetchData();
+                if (createdC) {
+                  setSelectedCourseForVideos(createdC);
+                  setManageCourseActiveTab('lessons');
+                }
+              } catch (err: any) {
+                toast.error(err.message, { id: toastId });
+              }
+            };
+
+            return (
+              <form onSubmit={handleSubmitCourse} className="space-y-4 py-4">
+                 <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label className="text-[10px] font-black uppercase text-zinc-400">Course Title</Label>
+                      <Input required value={newCourse.title} onChange={e => setNewCourse({...newCourse, title: e.target.value})} className="rounded-xl border border-zinc-200" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-[10px] font-black uppercase text-zinc-400">Category</Label>
+                      <Input required value={newCourse.category} onChange={e => setNewCourse({...newCourse, category: e.target.value})} className="rounded-xl border border-zinc-200" />
+                    </div>
+                 </div>
+                 <div className="space-y-2">
+                    <Label className="text-[10px] font-black uppercase text-zinc-400">Description</Label>
+                    <Textarea required value={newCourse.description} onChange={e => setNewCourse({...newCourse, description: e.target.value})} className="rounded-xl min-h-[80px] border border-zinc-200" />
+                 </div>
+                 <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label className="text-[10px] font-black uppercase text-zinc-400">Price (Standalone Bundle Upgrade, Optional)</Label>
+                      <Input type="number" required value={newCourse.price} onChange={e => setNewCourse({...newCourse, price: Number(e.target.value)})} className="rounded-xl border border-zinc-200" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-[10px] font-black uppercase text-zinc-400">Affiliate Commission (₹, Optional)</Label>
+                      <Input type="number" required value={newCourse.commission_amount} onChange={e => setNewCourse({...newCourse, commission_amount: Number(e.target.value)})} className="rounded-xl border border-zinc-200" />
+                    </div>
+                 </div>
+                 <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label className="text-[10px] font-black uppercase text-zinc-400">Upload Thumbnail</Label>
+                      <div className="flex gap-2">
+                        <Input required value={newCourse.cover_url} onChange={e => setNewCourse({...newCourse, cover_url: e.target.value})} className="rounded-xl flex-1 text-xs border border-zinc-200" placeholder="Paste image link or upload" />
+                        <div className="relative">
+                          <Button type="button" size="icon" variant="outline" className="rounded-xl h-10 w-10 border border-zinc-200">
+                            <ImageIcon className="w-4 h-4 text-zinc-500" />
+                          </Button>
+                          <input 
+                            type="file" 
+                            className="absolute inset-0 opacity-0 cursor-pointer" 
+                            accept="image/*" 
+                            onChange={async (e) => {
+                              if (e.target.files?.[0]) {
+                                const file = e.target.files[0];
+                                const { data, error: storageError } = await supabase.storage.from('ebooks').upload(`covers/${Math.random()}.${file.name.split('.').pop()}`, file);
+                                if (!storageError && data) {
+                                  const { data: { publicUrl } } = supabase.storage.from('ebooks').getPublicUrl(data.path);
+                                  setNewCourse(prev => ({ ...prev, cover_url: publicUrl }));
+                                  toast.success('Thumbnail uploaded');
+                                } else {
+                                  toast.error('Upload failed');
+                                }
+                              }
+                            }} 
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-[10px] font-black uppercase text-zinc-400">Intro Video (Mux Direct)</Label>
+                      <div className={`relative h-10 border-2 border-dashed rounded-xl flex items-center justify-center transition-all ${isUploadingVideo ? 'border-orange-500 bg-orange-50' : 'border-zinc-200 bg-zinc-50 hover:bg-white'}`}>
+                        {isUploadingVideo ? (
+                          <div className="flex items-center gap-2 px-2">
+                            <Loader2 className="w-3 h-3 animate-spin text-orange-600" />
+                            <span className="text-[9px] font-black text-orange-600 uppercase">Processing {videoUploadProgress}%</span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2 px-2">
+                            <Upload className="w-4 h-4 text-zinc-400" />
+                            <span className="text-[9px] font-black text-zinc-400 uppercase tracking-wider">{newCourse.file_url ? 'Intro Bound' : 'SELECT INTRO'}</span>
+                            <input 
+                              type="file" 
+                              accept="video/*" 
+                              className="absolute inset-0 opacity-0 cursor-pointer" 
+                              onChange={(e) => {
+                                if (e.target.files?.[0]) {
+                                  handleMuxUpload(e.target.files[0], (assetId, playbackId) => {
+                                    setNewCourse(prev => ({ ...prev, file_url: playbackId, intro_mux_asset_id: assetId }));
+                                  });
+                                }
+                              }}
+                            />
+                          </div>
+                        )}
+                      </div>
+                      {newCourse.file_url && <p className="text-[8px] text-green-600 font-bold truncate text-center">Ready playback: {newCourse.file_url}</p>}
+                    </div>
+                 </div>
+                 <Button type="submit" disabled={isUploadingVideo} className="w-full bg-orange-600 hover:bg-orange-700 rounded-xl h-12 font-black text-sm uppercase tracking-wider text-white">LAUNCH COMPANION MASTERCLASS</Button>
+              </form>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
+
+      {/* Video / Course Unified Management Modal */}
+      <Dialog open={!!selectedCourseForVideos} onOpenChange={(open) => !open && setSelectedCourseForVideos(null)}>
+        <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto rounded-[3rem] p-0 border-none shadow-2xl bg-white text-zinc-950">
+          <div className="bg-zinc-900 p-8 text-white">
+            <DialogTitle className="text-3xl font-black italic tracking-tighter">
+              {selectedCourseForVideos?.title}
+            </DialogTitle>
+            <div className="flex items-center gap-4 mt-6">
+              <button 
+                onClick={() => setManageCourseActiveTab('lessons')}
+                className={`text-xs font-black uppercase tracking-widest px-4 py-2 rounded-xl transition-all ${manageCourseActiveTab === 'lessons' ? 'bg-orange-600 text-white' : 'text-zinc-400 hover:text-white'}`}
+              >
+                Lessons Syllabus
+              </button>
+              <button 
+                onClick={() => setManageCourseActiveTab('settings')}
+                className={`text-xs font-black uppercase tracking-widest px-4 py-2 rounded-xl transition-all ${manageCourseActiveTab === 'settings' ? 'bg-orange-600 text-white' : 'text-zinc-400 hover:text-white'}`}
+              >
+                Course Settings
+              </button>
+            </div>
+          </div>
+
+          {manageCourseActiveTab === 'lessons' && (
+            <>
+              <div className="p-8">
+                <div className="flex items-center justify-between mb-6">
+                   <p className="text-zinc-400 font-bold uppercase text-[10px] tracking-widest animate-pulse">Syllabus Builder • Video Stream</p>
+                   <Button 
+                    className="bg-orange-600 hover:bg-orange-700 text-white rounded-xl gap-2 font-black text-xs px-4"
+                    onClick={() => {
+                      setNewVideo({
+                        title: '',
+                        description: '',
+                        mux_playback_id: '',
+                        mux_asset_id: '',
+                        is_preview: false,
+                        order_index: 0
+                      });
+                      setIsVideoAdding(true);
+                    }}
+                   >
+                     <Plus className="w-4 h-4" /> Add Lesson
+                   </Button>
+                </div>
+
+                <div className="space-y-4">
+                  {courseVideos.filter(v => v.course_id === selectedCourseForVideos?.id).map((video, idx) => (
+                    <div key={video.id} className="flex items-center justify-between p-4 bg-zinc-50 hover:bg-zinc-100 border border-zinc-100 rounded-2xl transition-colors group">
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 rounded-xl bg-white border-2 border-zinc-200 flex items-center justify-center font-black text-zinc-400">
+                          {idx + 1}
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h4 className="text-sm font-black text-zinc-900">{video.title}</h4>
+                            {video.is_preview && <Badge className="bg-green-100 text-green-600 border-none text-[8px] font-black uppercase tracking-widest px-1.5 h-4">Preview Free</Badge>}
+                          </div>
+                          <p className="text-[10px] text-zinc-400 font-bold font-mono tracking-tighter">{video.mux_playback_id}</p>
+                        </div>
+                      </div>
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="text-zinc-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
+                        onClick={() => handleDeleteVideo(video)}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  ))}
+                  {courseVideos.filter(v => v.course_id === selectedCourseForVideos?.id).length === 0 && (
+                    <div className="py-12 text-center text-zinc-300 italic uppercase font-black text-sm">Course is currently empty. Add your first lesson.</div>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+
+          {manageCourseActiveTab === 'settings' && selectedCourseForVideos && (
+            <div className="p-8 space-y-6">
+              <form onSubmit={async (e) => {
+                e.preventDefault();
+                const toastId = toast.loading('Updating course details...');
+                try {
+                  const { error } = await supabase
+                    .from('courses')
+                    .update({
+                      title: selectedCourseForVideos.title,
+                      description: selectedCourseForVideos.description,
+                      instructor: selectedCourseForVideos.instructor || 'Platform Admin',
+                      category: selectedCourseForVideos.category || 'Mastery',
+                      cover_url: selectedCourseForVideos.cover_url,
+                      price: Number(selectedCourseForVideos.price || 0),
+                      commission_amount: Number(selectedCourseForVideos.commission_amount || 0),
+                      intro_mux_playback_id: selectedCourseForVideos.intro_mux_playback_id || null,
+                      intro_mux_asset_id: selectedCourseForVideos.intro_mux_asset_id || null
+                    })
+                    .eq('id', selectedCourseForVideos.id);
+
+                  if (error) throw error;
+                  toast.success('Course details updated successfully!', { id: toastId });
+                  fetchData();
+                } catch (err: any) {
+                  toast.error(err.message, { id: toastId });
+                }
+              }} className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <Label className="text-[10px] font-black uppercase text-zinc-400">Course Title</Label>
+                    <Input 
+                      required 
+                      value={selectedCourseForVideos.title || ''} 
+                      onChange={e => setSelectedCourseForVideos(prev => prev ? ({ ...prev, title: e.target.value }) : null)} 
+                      className="rounded-xl h-11 border border-zinc-200" 
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-[10px] font-black uppercase text-zinc-400">Instructor Name</Label>
+                    <Input 
+                      required 
+                      value={selectedCourseForVideos.instructor || ''} 
+                      onChange={e => setSelectedCourseForVideos(prev => prev ? ({ ...prev, instructor: e.target.value }) : null)} 
+                      className="rounded-xl h-11 border border-zinc-200" 
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <Label className="text-[10px] font-black uppercase text-zinc-400">Category</Label>
+                    <Input 
+                      required 
+                      value={selectedCourseForVideos.category || ''} 
+                      onChange={e => setSelectedCourseForVideos(prev => prev ? ({ ...prev, category: e.target.value }) : null)} 
+                      className="rounded-xl h-11 border border-zinc-200" 
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-[10px] font-black uppercase text-zinc-400">Thumbnail URL</Label>
+                    <Input 
+                      required 
+                      value={selectedCourseForVideos.cover_url || ''} 
+                      onChange={e => setSelectedCourseForVideos(prev => prev ? ({ ...prev, cover_url: e.target.value }) : null)} 
+                      className="rounded-xl h-11 text-xs border border-zinc-200" 
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-[10px] font-black uppercase text-zinc-400">Description</Label>
+                  <Textarea 
+                    required 
+                    value={selectedCourseForVideos.description || ''} 
+                    onChange={e => setSelectedCourseForVideos(prev => prev ? ({ ...prev, description: e.target.value }) : null)} 
+                    className="rounded-xl min-h-[80px] border border-zinc-200" 
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <Label className="text-[10px] font-black uppercase text-zinc-400">Standalone Course Price (₹, Optional)</Label>
+                    <Input 
+                      type="number" 
+                      value={selectedCourseForVideos.price || 0} 
+                      onChange={e => setSelectedCourseForVideos(prev => prev ? ({ ...prev, price: Number(e.target.value) }) : null)} 
+                      className="rounded-xl h-11 border border-zinc-200" 
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-[10px] font-black uppercase text-zinc-400">Affiliate Commission (₹, Optional)</Label>
+                    <Input 
+                      type="number" 
+                      value={selectedCourseForVideos.commission_amount || 0} 
+                      onChange={e => setSelectedCourseForVideos(prev => prev ? ({ ...prev, commission_amount: Number(e.target.value) }) : null)} 
+                      className="rounded-xl h-11 border border-zinc-200" 
+                    />
+                  </div>
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  <Button type="submit" className="flex-1 bg-zinc-900 hover:bg-black text-white h-12 rounded-xl font-black text-xs uppercase tracking-wider">
+                    Save Course Changes
+                  </Button>
+                  <Button 
+                    type="button" 
+                    variant="destructive"
+                    className="h-12 rounded-xl px-6 text-xs font-black uppercase tracking-wider"
+                    onClick={async () => {
+                      setSelectedCourseForVideos(null);
+                      await handleDeleteCourse(selectedCourseForVideos);
+                    }}
+                  >
+                    Delete Course
+                  </Button>
+                </div>
+              </form>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Video Dialog */}
+      <Dialog open={isVideoAdding} onOpenChange={setIsVideoAdding}>
+        <DialogContent className="sm:max-w-[500px] rounded-[2.5rem] p-8 border-none shadow-2xl bg-white text-zinc-950">
+          <DialogHeader>
+            <DialogTitle className="text-2xl font-black text-zinc-900">Add New Lesson</DialogTitle>
+            <DialogDescription className="font-bold text-zinc-400">Upload video directly to Mux</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={(e) => {
+            e.preventDefault();
+            const file = (e.currentTarget.elements.namedItem('video-file') as HTMLInputElement).files?.[0];
+            if (file) {
+              handleMuxUpload(file, (assetId, playbackId) => handleAddVideoMetadata(assetId, playbackId));
+            } else {
+              toast.error('Please select a video file');
+            }
+          }} className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label className="text-[10px] font-black uppercase text-zinc-400">Video Title</Label>
+              <Input required value={newVideo.title} onChange={e => setNewVideo({...newVideo, title: e.target.value})} className="rounded-xl border border-zinc-200" />
+            </div>
+            
+            <div className="space-y-2">
+              <Label className="text-[10px] font-black uppercase text-zinc-400">Video File</Label>
+              <div className={`relative h-24 border-2 border-dashed rounded-2xl flex flex-col items-center justify-center transition-all ${isUploadingVideo ? 'border-orange-500 bg-orange-50' : 'border-zinc-200 bg-zinc-50 hover:bg-white'}`}>
+                {isUploadingVideo ? (
+                  <div className="w-full px-8 text-center space-y-2">
+                    <p className="text-[10px] font-black text-orange-600 uppercase tracking-widest animate-pulse">Uploading... {videoUploadProgress}%</p>
+                    <div className="w-full bg-zinc-200 h-1.5 rounded-full overflow-hidden">
+                      <div className="bg-orange-500 h-full transition-all duration-300" style={{ width: `${videoUploadProgress}%` }} />
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <Upload className="w-6 h-6 text-zinc-400 mb-2" />
+                    <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Select MP4/MOV</p>
+                    <input name="video-file" type="file" accept="video/*" className="absolute inset-0 opacity-0 cursor-pointer" />
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between p-4 bg-zinc-50 rounded-2xl border border-zinc-100">
+              <Label className="font-black cursor-pointer" htmlFor="isPreview">Free Overview/Preview?</Label>
+              <input 
+                type="checkbox" 
+                id="isPreview" 
+                checked={newVideo.is_preview} 
+                onChange={e => setNewVideo({...newVideo, is_preview: e.target.checked})}
+                className="w-5 h-5 accent-orange-600 rounded" 
+              />
+            </div>
+            <Button 
+              type="submit" 
+              disabled={isUploadingVideo}
+              className="w-full bg-zinc-900 text-white rounded-xl h-12 font-black transition-transform active:scale-95 shadow-xl shadow-zinc-900/10"
+            >
+              {isUploadingVideo ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : 'UPLOAD & SYNC'}
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {false && (
         <div className="space-y-6 animate-in fade-in duration-500">
           <div className="flex justify-between items-center bg-white p-6 rounded-[2.5rem] shadow-xl border border-zinc-100">
             <div>
@@ -2058,11 +2593,7 @@ export default function Admin() {
       <Button 
         className="fixed bottom-8 left-8 w-16 h-16 rounded-full bg-zinc-900 shadow-2xl hover:scale-110 active:scale-95 transition-all text-white p-0 z-50 flex items-center justify-center" 
         onClick={() => {
-          if (activeTab === 'courses') {
-            setIsAddingCourse(true);
-          } else {
-            setIsAddingProduct(true);
-          }
+          setIsAddingProduct(true);
         }}
       >
         <Plus className="w-8 h-8" />
@@ -2226,6 +2757,25 @@ export default function Admin() {
                 <Label className="text-[10px] font-black uppercase text-zinc-400">Description</Label>
                 <Textarea value={newEbook.description} onChange={e => setNewEbook({...newEbook, description: e.target.value})} required className="rounded-xl h-24" />
              </div>
+             <div className="space-y-1">
+                <Label className="text-[10px] font-black uppercase text-zinc-400">Linked Course (Optional)</Label>
+                <Select 
+                  value={newEbook.course_id || 'none'} 
+                  onValueChange={val => setNewEbook({...newEbook, course_id: val})}
+                >
+                  <SelectTrigger className="h-12 rounded-xl">
+                    <SelectValue placeholder="Choose a masterclass course to bundle" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No Course Linked (Stand-alone Ebook)</SelectItem>
+                    {courses.map(course => (
+                      <SelectItem key={course.id} value={course.id}>
+                        {course.title} {course.ebook_id ? '(Linked elsewhere)' : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+             </div>
              <div className="space-y-4">
                 <div className="p-4 border-2 border-dashed border-zinc-200 rounded-2xl text-center">
                    <Label className="text-[10px] font-black mb-2 block uppercase text-zinc-400">Cover & Asset Selection</Label>
@@ -2286,6 +2836,29 @@ export default function Admin() {
                <div className="space-y-1">
                   <Label className="text-[10px] font-black uppercase text-zinc-400 ml-1">Asset Description</Label>
                   <Textarea value={editFormData.description} onChange={e => setEditFormData({...editFormData, description: e.target.value})} className="rounded-xl h-32 border-2 focus:border-zinc-900 border-zinc-100 font-medium" />
+                </div>
+
+                <div className="space-y-1">
+                   <Label className="text-[10px] font-black uppercase text-zinc-400 ml-1">Linked Course (Optional)</Label>
+                   <Select 
+                     value={editFormData.course_id || 'none'} 
+                     onValueChange={val => setEditFormData({...editFormData, course_id: val})}
+                   >
+                     <SelectTrigger className="h-12 rounded-xl border-2 focus:border-zinc-900 border-zinc-100">
+                       <SelectValue placeholder="Choose a masterclass course to bundle" />
+                     </SelectTrigger>
+                     <SelectContent>
+                       <SelectItem value="none">No Course Linked (Stand-alone Ebook)</SelectItem>
+                       {courses.map(course => (
+                         <SelectItem key={course.id} value={course.id}>
+                           {course.title} {course.ebook_id ? (course.ebook_id === editingEbook?.id ? '(Currently linked)' : '(Linked elsewhere)') : ''}
+                         </SelectItem>
+                       ))}
+                     </SelectContent>
+                   </Select>
+                </div>
+
+                <div className="space-y-1" style={{ display: 'none' }}>
                </div>
 
                <div className="space-y-3">
