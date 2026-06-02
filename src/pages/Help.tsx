@@ -54,16 +54,18 @@ export default function Help() {
           </CardContent>
         </Card>
 
-        <Card className="border-none shadow-xl shadow-zinc-100 bg-white rounded-[2rem] overflow-hidden group hover:scale-[1.02] transition-transform">
-          <CardContent className="p-8 space-y-4">
-            <div className="w-12 h-12 bg-green-100 rounded-2xl flex items-center justify-center text-green-600">
-              <MessageCircle className="w-6 h-6" />
-            </div>
-            <h3 className="text-xl font-black italic uppercase">WhatsApp</h3>
-            <p className="text-zinc-500 text-sm font-medium">Fast answers for purchasing help.</p>
-            <p className="text-green-600 font-bold text-sm">+91 99999 99999</p>
-          </CardContent>
-        </Card>
+        <a href="https://wa.me/917417645286" target="_blank" rel="noopener noreferrer" className="block">
+          <Card className="border-none shadow-xl shadow-zinc-100 bg-white rounded-[2rem] overflow-hidden group hover:scale-[1.02] transition-transform h-full">
+            <CardContent className="p-8 space-y-4">
+              <div className="w-12 h-12 bg-green-100 rounded-2xl flex items-center justify-center text-green-600 group-hover:bg-green-500 group-hover:text-white transition-all">
+                <MessageCircle className="w-6 h-6" />
+              </div>
+              <h3 className="text-xl font-black italic uppercase group-hover:text-green-600 transition-colors">WhatsApp</h3>
+              <p className="text-zinc-500 text-sm font-medium">Fast answers for purchasing help.</p>
+              <p className="text-green-600 font-bold text-sm">+91 74176 45286</p>
+            </CardContent>
+          </Card>
+        </a>
 
         <Card className="border-none shadow-xl shadow-zinc-100 bg-white rounded-[2rem] overflow-hidden group hover:scale-[1.02] transition-transform">
           <CardContent className="p-8 space-y-4">
@@ -115,9 +117,11 @@ export default function Help() {
           <h3 className="text-2xl font-black italic uppercase">Still Need Help?</h3>
           <p className="text-zinc-400 font-medium">Our support team is active from 9AM to 9PM IST.</p>
         </div>
-        <Button className="bg-orange-600 hover:bg-orange-700 text-white font-black italic px-10 h-14 rounded-2xl shadow-xl shadow-orange-900/20">
-          CONTACT US
-        </Button>
+        <a href="https://wa.me/917417645286" target="_blank" rel="noopener noreferrer" className="inline-block w-full md:w-auto">
+          <Button className="w-full md:w-auto bg-orange-600 hover:bg-orange-700 text-white font-black italic px-10 h-14 rounded-2xl shadow-xl shadow-orange-900/20">
+            CONTACT US
+          </Button>
+        </a>
       </div>
     </div>
   );
