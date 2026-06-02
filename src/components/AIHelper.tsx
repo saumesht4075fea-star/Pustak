@@ -14,10 +14,6 @@ interface AIHelperProps {
   isAdmin: boolean;
 }
 
-// Groq API Configuration
-const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY || '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';
-const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
-
 export default function AIHelper({ user, isAdmin }: AIHelperProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
@@ -39,59 +35,28 @@ export default function AIHelper({ user, isAdmin }: AIHelperProps) {
 
     const userMessage = input.trim();
     setInput('');
-    setMessages(prev => [...prev, { role: 'user', text: userMessage }]);
+    const updatedMessages = [...messages, { role: 'user', text: userMessage } as Message];
+    setMessages(updatedMessages);
     setIsLoading(true);
 
     try {
-      const response = await fetch(GROQ_URL, {
+      const response = await fetch('/api/groq/chat', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${GROQ_API_KEY}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          model: "llama-3.3-70b-versatile",
-          messages: [
-            {
-              role: "system",
-              content: `You are PUSTAK Assist, the high-performance AI guide for PUSTAK - India's Premium Ebook Marketplace.
-              Your personality is technical, elite, professional, and slightly bold. You focus on "Intellectual Dominance" and "Market Success".
-              
-              Operational Intel:
-              - PUSTAK is a digital-first marketplace for elite ebooks.
-              - Payments: UPI based. Users MUST provide correct UTR (12-digit Transaction ID) for manual admin verification.
-              - TAT (Turnaround Time): 5-30 minutes for verification during business hours.
-              - Content Delivery: Books appear in 'My Library' or 'Orders' post-verification.
-              - Selling: Register as seller, upload high-quality PDFs, set premium pricing.
-              - Payouts: Minimum withdrawal threshold: ₹500.
-              - Affiliate Network: High-conversion referral system where users earn passive rewards.
-              - Official Support: support@pustak.online
-              
-              Engagement Protocol:
-              - Response Style: Direct, bold, and authoritative. Use formatting (bolding, lists) for maximum readability.
-              - Mention 'Bug Hunter' for any UI/UX issues.
-              - Strategic Advice: If users ask "how to make money", point them to the Affiliate system and high-demand topics.
-              - Cultural Context: Respect Indian market nuances. Use 'Namaste' and '₹' naturally.
-              - Never say "I am just an AI". You are PUSTAK Assist.`
-            },
-            ...messages.map(m => ({
-              role: m.role === 'user' ? 'user' : 'assistant',
-              content: m.text
-            })),
-            { role: 'user', content: userMessage }
-          ],
-          temperature: 0.7,
-          max_tokens: 1024
+          messages: updatedMessages
         })
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error?.message || `HTTP error! status: ${response.status}`);
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
       }
 
       const data = await response.json();
-      const aiText = data.choices?.[0]?.message?.content;
+      const aiText = data.text;
       
       if (!aiText) {
         throw new Error('Empty response from AI engine');
@@ -101,7 +66,7 @@ export default function AIHelper({ user, isAdmin }: AIHelperProps) {
     } catch (error) {
       console.error('AI Error:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown technical failure';
-      setMessages(prev => [...prev, { role: 'ai', text: `Diagnostic Error: ${errorMessage}. Please verify API link and retry.` }]);
+      setMessages(prev => [...prev, { role: 'ai', text: `Diagnostic Error: ${errorMessage}. Please check server connection and retry.` }]);
     } finally {
       setIsLoading(false);
     }
