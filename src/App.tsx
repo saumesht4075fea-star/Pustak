@@ -179,23 +179,23 @@ function Navbar({ user, profile, isAdmin, isSeller, hasOrders }: { user: User | 
   return (
     <nav className="sticky top-0 z-40 w-full border-b border-zinc-200 bg-white/80 backdrop-blur-md">
       <div className="container mx-auto px-4 h-16 flex items-center justify-between">
-        <Link to="/" className="flex items-center gap-2 group">
-          <BookOpen className="w-6 h-6 text-orange-600 group-hover:rotate-12 transition-transform" />
-          <span className="text-xl font-bold tracking-tighter">PUSTAK</span>
+        <Link to="/" className="flex items-center gap-1 sm:gap-2 group shrink-0">
+          <BookOpen className="w-5 h-5 sm:w-6 sm:h-6 text-orange-600 group-hover:rotate-12 transition-transform" />
+          <span className="text-lg sm:text-xl font-bold tracking-tighter">PUSTAK</span>
         </Link>
 
         <div className="flex items-center gap-1 sm:gap-4">
           <Link to="/wishlist">
-            <Button variant="ghost" size="icon" className="text-zinc-600">
-              <Heart className="w-5 h-5" />
+            <Button variant="ghost" size="icon" className="text-zinc-600 w-9 h-9 sm:w-10 sm:h-10">
+              <Heart className="w-4.5 h-4.5 sm:w-5 sm:h-5" />
             </Button>
           </Link>
-          <Link to="/orders?tab=ebooks" title="My Ebooks">
+          <Link to="/orders?tab=ebooks" title="My Ebooks" className="hidden sm:block">
             <Button variant="ghost" size="icon" className="text-zinc-600 hover:text-orange-600 transition-colors">
               <BookOpen className="w-5 h-5" />
             </Button>
           </Link>
-          <Link to="/orders?tab=courses" title="My Courses">
+          <Link to="/orders?tab=courses" title="My Courses" className="hidden sm:block">
             <Button variant="ghost" size="icon" className="text-zinc-600 hover:text-orange-600 transition-colors">
               <Play className="w-5 h-5" />
             </Button>
@@ -267,12 +267,12 @@ function Navbar({ user, profile, isAdmin, isSeller, hasOrders }: { user: User | 
             </Link>
           )}
 
-          <div className="h-6 w-[1px] bg-zinc-200 mx-2" />
+          <div className="hidden sm:block h-6 w-[1px] bg-zinc-200 mx-2" />
 
           {user ? (
-            <div className="flex items-center gap-2">
-              <Link to="/profile" className="flex items-center group p-0.5 sm:p-1 sm:pr-3 bg-zinc-50 hover:bg-orange-50 rounded-full border border-zinc-200 hover:border-orange-200 transition-all shrink-0">
-                <img src={profile?.avatar_url || user.user_metadata?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.id}`} alt="" className="w-8 h-8 rounded-full border border-white shadow-sm object-cover" />
+            <div className="flex items-center gap-2 shrink-0">
+              <Link to="/profile" className="flex items-center group p-0.5 sm:p-1 sm:pr-2 bg-zinc-50 hover:bg-orange-50 rounded-full border border-zinc-200 hover:border-orange-200 transition-all shrink-0">
+                <img src={profile?.avatar_url || user.user_metadata?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.id}`} alt="" className="w-7 h-7 sm:w-8 sm:h-8 rounded-full border border-white shadow-sm object-cover" />
                 <div className="hidden sm:flex flex-col items-start leading-tight sm:ml-2">
                   <p className="text-[10px] font-black text-zinc-900 group-hover:text-orange-600 transition-colors uppercase italic truncate max-w-[80px]">
                     {profile?.display_name || user.user_metadata?.display_name || user.email?.split('@')[0]}
@@ -362,7 +362,7 @@ function Navbar({ user, profile, isAdmin, isSeller, hasOrders }: { user: User | 
           </a>
           
           <a 
-            href="https://www.instagram.com/pustak.online_" 
+            href="https://www.instagram.com/pustak.on" 
             target="_blank" 
             rel="noopener noreferrer"
             className="hidden sm:flex p-2 text-zinc-600 hover:text-pink-600 transition-colors"
@@ -384,11 +384,11 @@ export default function App() {
   const [hasOrders, setHasOrders] = useState(false);
   const [loading, setLoading] = useState(true);  useEffect(() => {
     // Render and update the physical png/ico favicons if not already completed
-    if (localStorage.getItem("pustak_favicons_v7") === "done") return;
+    if (localStorage.getItem("pustak_favicons_v8") === "done") return;
     
     const generateFavicons = async () => {
       try {
-        const res = await fetch("/favicon.svg?v=7");
+        const res = await fetch("/favicon.svg?v=8");
         if (!res.ok) return;
         const svgText = await res.text();
         
@@ -446,7 +446,7 @@ export default function App() {
         });
         
         if (saveRes.ok) {
-          localStorage.setItem("pustak_favicons_v7", "done");
+          localStorage.setItem("pustak_favicons_v8", "done");
           console.log("PUSTAK Favicons successfully generated and written on backend!");
         }
       } catch (err) {
@@ -676,7 +676,7 @@ export default function App() {
   return (
     <Router>
       <BugHunter>
-        <div className="min-h-screen bg-zinc-50 font-sans text-zinc-950 flex flex-col">
+        <div className="min-h-screen bg-zinc-50 font-sans text-zinc-950 flex flex-col overflow-x-hidden">
           <Navbar user={user} profile={profile} isAdmin={isAdmin} isSeller={isSeller} hasOrders={hasOrders} />
           <main className="container mx-auto px-4 py-8 flex-1">
             <AnimatePresence mode="wait">
@@ -717,6 +717,7 @@ export default function App() {
                   <h4 className="text-xs font-black uppercase tracking-widest text-zinc-900 italic">Support</h4>
                   <ul className="space-y-2">
                     <li><a href="mailto:support@pustak.online" className="text-sm font-bold text-zinc-500 hover:text-orange-600 transition-colors italic uppercase tracking-tight">Email Support</a></li>
+                    <li><a href="https://wa.me/917417645286" target="_blank" rel="noopener noreferrer" className="text-sm font-bold text-zinc-500 hover:text-orange-600 transition-colors italic uppercase tracking-tight">WhatsApp Support</a></li>
                     <li><a href="#" className="text-sm font-bold text-zinc-500 hover:text-orange-600 transition-colors italic uppercase tracking-tight">Terms of Service</a></li>
                   </ul>
                 </div>
@@ -724,7 +725,7 @@ export default function App() {
                   <h4 className="text-xs font-black uppercase tracking-widest text-zinc-900 italic">Social</h4>
                   <div className="flex gap-4">
                     <a href="https://youtube.com/@Pustak_online" target="_blank" rel="noopener noreferrer" className="w-8 h-8 rounded-lg bg-zinc-100 flex items-center justify-center text-zinc-400 hover:bg-red-50 hover:text-red-600 transition-all"><Youtube className="w-4 h-4" /></a>
-                    <a href="https://www.instagram.com/pustak.online_" target="_blank" rel="noopener noreferrer" className="w-8 h-8 rounded-lg bg-zinc-100 flex items-center justify-center text-zinc-400 hover:bg-pink-50 hover:text-pink-600 transition-all"><Instagram className="w-4 h-4" /></a>
+                    <a href="https://www.instagram.com/pustak.on" target="_blank" rel="noopener noreferrer" className="w-8 h-8 rounded-lg bg-zinc-100 flex items-center justify-center text-zinc-400 hover:bg-pink-50 hover:text-pink-600 transition-all"><Instagram className="w-4 h-4" /></a>
                   </div>
                 </div>
               </div>
