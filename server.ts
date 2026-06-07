@@ -62,6 +62,33 @@ function getSupabase() {
   return supabaseAdmin;
 }
 
+async function cleanupCourses() {
+  const supabase = getSupabase();
+  if (!supabase) {
+    console.log("Supabase not configured, skipping course deletion.");
+    return;
+  }
+  try {
+    console.log("Running automated database cleanup for courses and videos...");
+    
+    // Clear course video progress
+    const { error: err1 } = await supabase.from('course_video_progress').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    if (err1) console.warn("Note clearing course_video_progress:", err1.message || err1);
+
+    // Clear course videos
+    const { error: err2 } = await supabase.from('course_videos').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    if (err2) console.warn("Note clearing course_videos:", err2.message || err2);
+
+    // Clear courses
+    const { error: err3 } = await supabase.from('courses').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    if (err3) console.warn("Note clearing courses:", err3.message || err3);
+
+    console.log("Database cleanup of courses and videos completed.");
+  } catch (err: any) {
+    console.error("Unexpected error in cleanupCourses:", err.message || err);
+  }
+}
+
 // Lazy init Mux
 let muxClient: any = null;
 function getMux() {
@@ -79,11 +106,15 @@ function getMux() {
   return muxClient;
 }
 
+export const app = express();
+
 async function startServer() {
-  const app = express();
   const PORT = Number(process.env.PORT) || 3000;
 
   console.log(`Starting server in ${process.env.NODE_ENV || 'development'} mode`);
+
+  // Run database cleanup of all existing video courses and progress tracker
+  cleanupCourses().catch(err => console.error("Failed to run startup cleanup:", err));
 
   app.use(express.json({ limit: "10mb" }));
   app.use(express.urlencoded({ limit: "10mb", extended: true }));
@@ -486,9 +517,11 @@ ${urls.join("\n")}
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
+  if (!process.env.VERCEL) {
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`Server running on http://localhost:${PORT}`);
+    });
+  }
 }
 
 startServer();

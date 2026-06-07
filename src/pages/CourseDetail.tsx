@@ -82,7 +82,7 @@ export default function CourseDetail({ user }: { user: User | null }) {
             .in('status', ['success', 'completed'])
             .maybeSingle();
 
-          if (orderData || ['saumesht4075fea@gmail.com', 'mohittttt868@gmail.com', 'jeetusharma1583@gmail.com'].includes(user.email || '')) {
+          if (orderData || ['saumesht4075fea@gmail.com', 'mohittttt868@gmail.com'].includes(user.email || '')) {
             setHasAccess(true);
             
             // Fetch progress

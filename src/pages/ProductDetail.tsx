@@ -147,7 +147,7 @@ export default function ProductDetail({ user, isAdmin, isSeller }: { user: User 
           .single();
         
         if (prof) {
-          const adminEmails = ['saumesht4075fea@gmail.com', 'mohittttt868@gmail.com', 'jeetusharma1583@gmail.com'];
+          const adminEmails = ['saumesht4075fea@gmail.com', 'mohittttt868@gmail.com'];
           if (adminEmails.includes(prof.email || '')) {
             setReferralCodeError('Cannot use admin referral');
             setIsVerifyingCode(false);
@@ -444,7 +444,7 @@ export default function ProductDetail({ user, isAdmin, isSeller }: { user: User 
     
     // 1. Ensure current user has a profile first (prevents user_id FK violation)
     try {
-      const adminEmails = ['saumesht4075fea@gmail.com', 'mohittttt868@gmail.com', 'jeetusharma1583@gmail.com'];
+      const adminEmails = ['saumesht4075fea@gmail.com', 'mohittttt868@gmail.com'];
       const role = adminEmails.includes(user.email || '') ? 'admin' : 'customer';
       
       await supabase.from('profiles').upsert({
@@ -477,7 +477,7 @@ export default function ProductDetail({ user, isAdmin, isSeller }: { user: User 
             .eq('uid', finalReferrerId)
             .maybeSingle(); 
           
-          const adminEmails = ['saumesht4075fea@gmail.com', 'mohittttt868@gmail.com', 'jeetusharma1583@gmail.com'];
+          const adminEmails = ['saumesht4075fea@gmail.com', 'mohittttt868@gmail.com'];
           if (error || !data || adminEmails.includes(data.email || '')) {
             console.warn('Referrer profile not found or is an admin, resetting to null:', finalReferrerId);
             finalReferrerId = null;

@@ -18,7 +18,7 @@ import GlobalChat from './components/GlobalChat';
 import AIHelper from './components/AIHelper';
 import { BugHunter } from './components/BugHunter';
 import { Profile } from './types';
-import { BookOpen, Heart, ShoppingBag, User as UserIcon, Instagram, LogIn, LogOut, ShieldCheck, AlertTriangle, LayoutDashboard, UserCircle, Youtube, HelpCircle, Info, Smartphone, Bell, BellRing, Play } from 'lucide-react';
+import { BookOpen, Heart, ShoppingBag, User as UserIcon, Instagram, LogIn, LogOut, ShieldCheck, AlertTriangle, LayoutDashboard, UserCircle, Youtube, HelpCircle, Info, Smartphone, Bell, BellRing, Play, Library } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Toaster } from '@/components/ui/sonner';
 import { toast } from 'sonner';
@@ -30,7 +30,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 async function syncUser(user: User, displayName?: string) {
   try {
-    const adminEmails = ['saumesht4075fea@gmail.com', 'mohittttt868@gmail.com', 'jeetusharma1583@gmail.com'];
+    const adminEmails = ['saumesht4075fea@gmail.com', 'mohittttt868@gmail.com'];
     const role = adminEmails.includes(user.email || '') ? 'admin' : 'customer';
     
     const { error } = await supabase.from('profiles').upsert({
@@ -190,14 +190,9 @@ function Navbar({ user, profile, isAdmin, isSeller, hasOrders }: { user: User | 
               <Heart className="w-4.5 h-4.5 sm:w-5 sm:h-5" />
             </Button>
           </Link>
-          <Link to="/orders?tab=ebooks" title="My Ebooks" className="hidden sm:block">
-            <Button variant="ghost" size="icon" className="text-zinc-600 hover:text-orange-600 transition-colors">
-              <BookOpen className="w-5 h-5" />
-            </Button>
-          </Link>
-          <Link to="/orders?tab=courses" title="My Courses" className="hidden sm:block">
-            <Button variant="ghost" size="icon" className="text-zinc-600 hover:text-orange-600 transition-colors">
-              <Play className="w-5 h-5" />
+          <Link to="/orders" title="My Library & Courses">
+            <Button variant="ghost" size="icon" className="text-zinc-600 hover:text-orange-600 transition-colors w-9 h-9 sm:w-10 sm:h-10">
+              <Library className="w-4.5 h-4.5 sm:w-5 sm:h-5" />
             </Button>
           </Link>
 
@@ -612,7 +607,7 @@ export default function App() {
 
   const checkRole = async (user: User) => {
     if (!isSupabaseConfigured) return;
-    const adminEmails = ['saumesht4075fea@gmail.com', 'mohittttt868@gmail.com', 'jeetusharma1583@gmail.com'];
+    const adminEmails = ['saumesht4075fea@gmail.com', 'mohittttt868@gmail.com'];
     if (adminEmails.includes(user.email || '')) {
       setIsAdmin(true);
       setIsSeller(true);

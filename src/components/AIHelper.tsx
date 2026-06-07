@@ -40,7 +40,7 @@ export default function AIHelper({ user, isAdmin }: AIHelperProps) {
     setIsLoading(true);
 
     try {
-      const response = await fetch('/api/groq/chat', {
+      const response = await fetch('/api/gemini/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
